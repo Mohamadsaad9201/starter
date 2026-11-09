@@ -56,7 +56,7 @@ const WS = {
 };
 const PAGES = { ask:"Ask Samaritan", email:"Email", scorecard:"Scorecard", sentiment:"Sentiment", factcheck:"FactCheck", traffic:"Search traffic", visibility:"AI visibility", citations:"Citations", benchmarks:"Benchmarks", leadgen:"Lead generation", work:"Work history", playbooks:"Playbooks", inbox:"Approvals", seo:"Google search queue", geo:"AI answers queue", paid:"Paid channels", team:"Your team", access: "Workspace access", today: "Today", fixes: "Fixes", growth: "Analytics", content: "Content", activity: "Activity log", connections: "Connections", business: "Business details", apps: "Impackt Media apps" };
 const ALIAS = { pulse: ["today"], review: ["fixes"], tasks: ["fixes", "hand"], website: ["fixes", "live"], ads: ["growth", "ads"], integrations: ["connections"], profile: ["business"] };
-const DRAFT_KINDS = { seo: ["Blog post", "FAQ section", "Collection page copy", "Product description", "Content brief"], ads: ["Ad copy", "Campaign brief", "Offer ideas", "Landing page copy"], website: ["Landing page copy", "Homepage section", "About page", "Product description"] };
+const DRAFT_KINDS = { seo: ["Blog post", "FAQ section", "Collection page copy", "Product description", "Content brief", "Email campaign", "Social posts"], ads: ["Ad copy", "Campaign brief", "Offer ideas", "Landing page copy"], website: ["Landing page copy", "Homepage section", "About page", "Product description"] };
 const CONNECTOR_TYPES = {
   shopify: { name: "Shopify", icon: "S", cls: "shopify", blurb: "Applies approved titles, meta descriptions, alt text and noindex changes within 10 minutes of approval." },
   wordpress: { name: "WordPress", icon: "W", cls: "wordpress", blurb: "Read access to posts and pages, and detects Yoast or Rank Math." },
@@ -353,7 +353,7 @@ async function loadResults(id) {
 }
 // client_workspace omits drafts.workspace; derive it from the kind so client reviewers still see their drafts.
 const withWorkspace=x=>x.workspace?x:{...x,workspace:DRAFT_KINDS.ads.includes(x.kind)?'ads':DRAFT_KINDS.seo.includes(x.kind)?'seo':DRAFT_KINDS.website.includes(x.kind)?'website':x.workspace};
-const inScopeDraft=x=>['seo','ads','website'].includes(x.workspace)&&['Blog post','FAQ section','Collection page copy','Product description','Content brief','Ad copy','Campaign brief','Offer ideas','Landing page copy','Homepage section','About page'].includes(x.kind);
+const inScopeDraft=x=>['seo','ads','website'].includes(x.workspace)&&['Blog post','FAQ section','Collection page copy','Product description','Content brief','Email campaign','Social posts','Ad copy','Campaign brief','Offer ideas','Landing page copy','Homepage section','About page'].includes(x.kind);
 async function loadKnowledge(id) {
  S.knowledge||={};
  try{const {data,error}=await sb.rpc('business_knowledge',{p_site:id});if(error)throw error;S.knowledge[id]=data||{};}catch(e){S.knowledge[id]={error:e.message};}
@@ -998,7 +998,13 @@ const playbookCollections = [
   {id:"search", label:"Search visibility", icon:"search", headline:"Help buyers find the right page", description:"Samaritan compares search evidence with the pages you already have. Your team can improve a listing, connect related pages or give similar pages distinct purposes.", slugs:["seo-search-opportunity","seo-internal-links","seo-content-overlap","local-page"]},
   {id:"answers", label:"AI answers", icon:"globe", headline:"Answer the questions buyers actually ask", description:"Samaritan compares sampled AI answers with your site, finds a relevant destination and prepares content when the evidence supports an addition.", slugs:["ai-answer-plan","snippet-answers","answer-article","content-plan"]},
   {id:"website", label:"Website content", icon:"file", headline:"Help visitors make a buying decision", description:"Your team uses verified product details and customer questions to prepare clearer product pages, collections and comparisons.", slugs:["product-page-cro","collection-copy","comparison-page","landing-page","homepage-refresh","copy-polish","about-page"]},
-  {id:"paid", label:"Paid campaigns", icon:"megaphone", headline:"Build a campaign around a real offer", description:"Your team can develop campaign briefs, creative angles and ad copy around your offer and landing page. A marketer reviews the plan and authorizes spend.", slugs:["campaign-plan","ad-copy-set","seasonal-campaign","offer-free-delivery"]}
+  {id:"paid", label:"Paid campaigns", icon:"megaphone", headline:"Build a campaign around a real offer", description:"Your team can develop campaign briefs, creative angles and ad copy around your offer and landing page. A marketer reviews the plan and authorizes spend.", slugs:["campaign-plan","ad-copy-set","seasonal-campaign","offer-free-delivery"]},
+  {id:"specialists", label:"SEO specialists", icon:"bot", headline:"Twelve SEO specialists, each with one job", description:"Each specialist reads your page inventory, site audit, AI-answer checks and Search Console data, then delivers one focused plan for review.", slugs:["seo-agent-strategy","seo-agent-keywords","seo-agent-performance","seo-agent-competitors","seo-agent-writer","seo-agent-onpage","seo-agent-internal-links","seo-agent-backlinks","seo-agent-indexing","seo-agent-schema","seo-agent-brand","seo-agent-local"]},
+  {id:"site", label:"Search & site", icon:"target", headline:"Fix what holds your site back", description:"Audits, structured data, site structure, scaled pages, links and listings, prepared from your site's evidence.", slugs:["seo-audit","schema","site-architecture","programmatic-seo","link-building","directory-submissions"]},
+  {id:"convert", label:"Conversion", icon:"cart", headline:"Turn more visitors into customers", description:"Tests, popups, lead magnets, free tools, signup and checkout, first-week onboarding, pricing and upgrade prompts.", slugs:["ab-testing","popups","lead-magnets","free-tools","signup","onboarding","pricing","paywalls"]},
+  {id:"messaging", label:"Email & SMS", icon:"activity", headline:"Messages customers are glad to get", description:"Email sequences, texts, outreach and retention, written for your customers and ready to review.", slugs:["emails","sms","cold-email","churn-prevention"]},
+  {id:"brand", label:"Social & brand", icon:"users", headline:"Get your business talked about", description:"Social posts, video and image briefs, creators, community, press, events, partners and referrals.", slugs:["social","video","image","influencer-marketing","community-marketing","public-relations","events","co-marketing","referrals"]},
+  {id:"strategy", label:"Strategy & research", icon:"pulse", headline:"Decide with evidence", description:"Positioning, competitor research, expert perspectives, routines, tracking, attribution, sales process and app store listings.", slugs:["product-marketing","competitor-profiling","reverse-engineer-marketing","marketing-council","marketing-loops","analytics","conversion-tracking","attribution","revops","sales-enablement","prospecting","aso"]}
 ];
 function playbookLens(s,d,category){
  const opportunity=(S.opps?.[s.id]?.rows||[]).find(o=>o.publishable&&['ready','live','measured'].includes(o.stage)&&o.why&&
@@ -1023,7 +1029,7 @@ function playbooksView(s,d){
  const summaries={'answer-article':'An article answering a specific buyer question, with relevant sources and links.','snippet-answers':'Short, factual answers written for the page where buyers need them.'};
  const nav=playbookCollections.map(c=>`<a class="studio-nav-item" href="${href('playbooks',c.id)}" ${c.id===selected.id?'aria-current="page"':''}>${icon(c.icon,20)}<span>${c.label}</span></a>`).join('');
  const cards=entries.map(p=>{
-   if(S.isAdmin)return pbCard(s,{...p,title:titles[p.slug]||p.title,gets:summaries[p.slug]||p.gets});
+   if(S.isAdmin||isOwner())return pbCard(s,{...p,title:titles[p.slug]||p.title,gets:summaries[p.slug]||p.gets});
    return `<article class="pb studio-example"><small>${esc(p.kind)}</small><h3>${esc(titles[p.slug]||p.title)}</h3><p>${esc(summaries[p.slug]||p.gets)}</p></article>`;
  }).join('');
  return `<section class="pb-studio"><header class="r-header"><div><h1>Playbooks</h1><p class="muted">Explore what your marketing team can do for ${esc(s.name)}.</p></div></header>
