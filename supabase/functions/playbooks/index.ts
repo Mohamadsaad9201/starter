@@ -1,6 +1,5 @@
 import {seoEvidence} from "./seo-evidence.ts";
 import {agentEvidence} from "./agent-evidence.ts";
-import {seoAgents} from "./agents.ts";
 const seoBooks = [{"slug":"seo-internal-links","title":"Connect related pages","gets":"A paragraph with relevant internal links, written for a specific page in your inventory.","ask":"Which page or product should we focus on?","skills":["advertools / crawl inventory"],"guidance":"Use the selected source and related destination URLs. Draft a short addition with natural, descriptive Markdown links. Check intent and existing copy. Never assert a link is missing from an excerpt. Do not propose backlinks on external websites.","ws":"seo","kind":"Content brief","goal":"Improve existing search pages"},{"slug":"seo-search-opportunity","title":"Improve a page already appearing in search","gets":"A revised introduction for an existing page with recorded Search Console impressions.","ask":"Which product or theme matters most?","skills":["Google API Python Client / Search Analytics"],"guidance":"Use the matched page and its exact reporting period. Draft an introduction that serves the existing page intent. Site-level queries are context only. Do not attribute a query to this URL, predict uplift or request a title change on length alone.","ws":"seo","kind":"Content brief","goal":"Improve existing search pages"},{"slug":"seo-content-overlap","title":"Give similar pages distinct purposes","gets":"A proposed revision for one of two pages that cover similar ground.","ask":"Which topic or page should we compare?","skills":["Sentence Transformers / semantic retrieval"],"guidance":"Inspect the two excerpts and their customer tasks. Similarity is a retrieval signal. Different locations, product variants and buying versus learning intent can justify separate pages. Draft differentiated copy only for a defensible distinction. Keep both URLs intact.","ws":"seo","kind":"Content brief","goal":"Improve existing search pages"}];
 // Playbooks: proven marketing frameworks (adapted from marketingskills by Corey Haines, MIT) filled in with the
 // business's own verified data, written by the engine's writer (business rules, excluded phrases, scope) and
@@ -145,7 +144,9 @@ const PLAN: Record<string, Plan> = {
   "social": { every: 7 }, "referrals": { every: 60 }, "product-marketing": { every: 90 }, "competitor-profiling": { every: 30, needs: ["aeo"] },
   "marketing-loops": { every: 90 }, "analytics": { every: 90 }, "conversion-tracking": { every: 60, needs: ["ads"] }, "attribution": { every: 60, needs: ["ads"] },
 };
-const AUTO = { dailyDefault: 10, perTick: 3, pendingLimit: 30 };
+// tickBudget: Supabase rate-limits how many function calls one request may fan out (~15), so each tick dispatches at
+// most 12 runs, businesses with the fewest runs today first. 12 hourly ticks still allow ~140 runs a day.
+const AUTO = { dailyDefault: 10, perTick: 3, pendingLimit: 30, tickBudget: 12 };
 const today = () => new Date().toLocaleDateString("en-CA", { timeZone: "America/Detroit" });
 
 async function evidence(site: any) {
@@ -177,15 +178,24 @@ async function autopilot() {
   const report: any[] = [];
   const { data: sites } = await db.from("sites").select("id,name,domain,profile,brand").eq("active", true);
   const lib = await library().catch(() => ({ playbooks: [] }));
-  const books = [...seoBooks, ...seoAgents, ...(lib.playbooks || [])];
+  const books = [...seoBooks, ...(lib.playbooks || [])];
   const key = await engineKey(), day = today();
   const onDay = (ts: string) => new Date(ts).toLocaleDateString("en-CA", { timeZone: "America/Detroit" }) === day;
+  const runsBySite = new Map<string, any[]>();
   for (const site of sites || []) {
+    const { data: runs } = await db.from("playbook_runs").select("slug,status,note,auto,draft_id,created_at").eq("site_id", site.id).gte("created_at", new Date(Date.now() - 95 * DAY).toISOString()).order("created_at", { ascending: false }).limit(1000);
+    runsBySite.set(site.id, runs || []);
+  }
+  const autoCount = (id: string) => (runsBySite.get(id) || []).filter((r: any) => r.auto && onDay(r.created_at) && r.status !== "failed").length;
+  const ordered = [...(sites || [])].sort((a: any, b: any) => autoCount(a.id) - autoCount(b.id));
+  let budget = AUTO.tickBudget, limited = false;
+  for (const site of ordered) {
+    if (budget <= 0 || limited) { report.push({ site: site.id, skipped: limited ? "rate limited; next tick" : "tick budget used; next tick" }); continue; }
     const cfg = site.profile?.autopilot || {};
     if (cfg.enabled === false) { report.push({ site: site.id, skipped: "autopilot off" }); continue; }
     const cap = Number(cfg.daily) > 0 ? Math.min(60, Number(cfg.daily)) : AUTO.dailyDefault;
-    const { data: runs } = await db.from("playbook_runs").select("slug,status,note,auto,draft_id,created_at").eq("site_id", site.id).gte("created_at", new Date(Date.now() - 95 * DAY).toISOString()).order("created_at", { ascending: false }).limit(1000);
-    const autoToday = (runs || []).filter((r: any) => r.auto && onDay(r.created_at) && r.status !== "failed").length;
+    const runs = runsBySite.get(site.id) || [];
+    const autoToday = autoCount(site.id);
     const draftIds = (runs || []).filter((r: any) => r.auto && r.draft_id).map((r: any) => r.draft_id);
     const { data: waiting } = draftIds.length ? await db.from("drafts").select("id").in("id", draftIds.slice(0, 500)).eq("status", "needs_review") : { data: [] };
     const pendingIds = new Set((waiting || []).map((d: any) => String(d.id)));
@@ -207,13 +217,25 @@ async function autopilot() {
       const evidenceWeight = (plan.needs || []).filter((n) => ["gsc", "shop", "aeo"].includes(n)).length;
       return { slug, note, score: overdue + evidenceWeight * 0.5 };
     }).filter(Boolean).sort((a: any, b: any) => b.score - a.score);
-    const take = candidates.slice(0, Math.min(AUTO.perTick, cap - autoToday));
-    const started: string[] = [];
+    const take = candidates.slice(0, Math.min(AUTO.perTick, cap - autoToday, budget));
+    const started: string[] = [], errors: string[] = [];
     for (const c of take as any[]) {
-      const r = await fetch(`${URL_}/functions/v1/playbooks`, { method: "POST", headers: { "Content-Type": "application/json", "x-engine-key": key }, body: JSON.stringify({ action: "run", site_id: site.id, slug: c.slug, note: c.note, auto: true }), signal: AbortSignal.timeout(30000) }).catch((e) => ({ ok: false, statusText: String(e) } as any));
-      if (r.ok) started.push(c.slug + (c.note ? ` (${c.note.slice(0, 40)})` : ""));
+      let why = "";
+      budget--;
+      for (let attempt = 0; attempt < 2; attempt++) {
+        if (attempt) await new Promise((res) => setTimeout(res, 3000));
+        const r = await fetch(`${URL_}/functions/v1/playbooks`, { method: "POST", headers: { "Content-Type": "application/json", "x-engine-key": key }, body: JSON.stringify({ action: "run", site_id: site.id, slug: c.slug, note: c.note, auto: true }), signal: AbortSignal.timeout(30000) })
+          .then(async (x) => x.ok ? "" : `${x.status} ${(await x.text().catch(() => "")).slice(0, 160)}`)
+          .catch((e) => String(e?.message || e).slice(0, 160));
+        why = r; if (!why || /rate limit/i.test(why)) break;
+      }
+      if (/rate limit/i.test(why)) { limited = true; errors.push(`${c.slug}: ${why}`); break; }
+      if (!why) started.push(c.slug + (c.note ? ` (${c.note.slice(0, 40)})` : ""));
+      else errors.push(`${c.slug}: ${why}`);
+      await new Promise((res) => setTimeout(res, 400));
     }
-    report.push({ site: site.id, started, eligible: candidates.length, today: autoToday + started.length, cap, waiting: pendingIds.size });
+    if (errors.length) console.log("autopilot dispatch failed", site.id, JSON.stringify(errors));
+    report.push({ site: site.id, started, eligible: candidates.length, today: autoToday + started.length, cap, waiting: pendingIds.size, ...(errors.length ? { errors } : {}) });
   }
   report.push({ measured: await measurePass() });
   return { ok: true, day, report };
@@ -270,7 +292,7 @@ Deno.serve(async (req) => {
       return json(await autopilot());
     }
     if (body.action === "run") {
-      const pb = seoBooks.find(p=>p.slug===body.slug) || seoAgents.find((p:any)=>p.slug===body.slug) || ((await library()).playbooks || []).find((p: any) => p.slug === body.slug);
+      const pb = seoBooks.find(p=>p.slug===body.slug) || ((await library()).playbooks || []).find((p: any) => p.slug === body.slug); // the library includes the 12 SEO specialists
       if (!pb) return json({ error: "Unknown playbook" }, 400);
       const { data: busy } = await db.from("playbook_runs").select("id").eq("site_id", body.site_id).eq("slug", pb.slug).eq("status", "writing").gte("created_at", new Date(Date.now() - 5 * 60000).toISOString()).limit(1);
       if (busy?.length) return json({ ok: true, id: busy[0].id, status: "writing" });

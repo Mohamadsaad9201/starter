@@ -25,3 +25,30 @@ Project: `egtvvunkdkpqmfafhkjg` (ots-seo-engine). Everything in this folder is d
 ## Not covered here
 
 The `engine` function (publishing, checkups, Search Console sync) is unchanged; its source isn't in this repo.
+
+## Playbooks autopilot
+
+`playbooks` (deployed v8, `verify_jwt` off; it checks the engine key or workspace membership itself) prepares work
+for every active business without anyone pressing a button:
+
+- **Schedule:** pg_cron job `playbooks-autopilot`, hourly 8am–7pm Detroit (`35 12-23 * * *` UTC), set up in
+  `migrations/20261109200000_playbook_autopilot.sql`.
+- **Per business:** up to 3 runs per tick, 10 a day by default (`profile.autopilot.daily`, max 60), paused while 30
+  automatic drafts wait for review. `profile.autopilot.enabled = false` turns it off.
+- **What runs:** each playbook has its own cadence (the `PLAN` map in `index.ts`) and runs only when the business has
+  the evidence it needs: crawled pages, Search Console, Shopify sales, AI-answer checks, ad accounts or locations.
+  The page, question or location a person would type is filled in from that evidence.
+- **Nothing publishes.** Every result is a draft in the review queue.
+- **Measurement:** each run stores a baseline snapshot and the metric it should move (`measure`). 28 days later
+  (`review_at`), approved drafts get an after-snapshot; rejected or never-decided work is recorded as such.
+- **Library:** playbook content lives in `public.playbook_library`. Refresh it after `node tools/build-playbooks.mjs`
+  and a push (steps in `migrations/20261109190000_playbook_library.sql`).
+
+Trigger one tick by hand:
+
+```sql
+select net.http_post(url := 'https://egtvvunkdkpqmfafhkjg.supabase.co/functions/v1/playbooks',
+  headers := jsonb_build_object('Content-Type','application/json','x-engine-key',
+    (select decrypted_secret from vault.decrypted_secrets where name = 'engine_cron_key')),
+  body := '{"action":"autopilot"}'::jsonb, timeout_milliseconds := 120000);
+```
