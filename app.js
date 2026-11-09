@@ -987,9 +987,21 @@ document.addEventListener('click',async e=>{
 async function loadPlaybooks(){if(S.pbLib||loadPlaybooks.busy)return;loadPlaybooks.busy=1;try{const r=await fetch('/playbooks.json',{cache:'no-cache'});S.pbLib=r.ok?await r.json():{playbooks:[]};}catch{S.pbLib={playbooks:[]};}loadPlaybooks.busy=0;if(S.page==='playbooks'||S.page==='today')render();}
 async function loadRuns(id){S.pbRuns||={};try{const {data}=await sb.from('playbook_runs').select('*').eq('site_id',id).order('created_at',{ascending:false}).limit(40);S.pbRuns[id]=data||[];}catch{S.pbRuns[id]=S.pbRuns[id]||[];}}
 function pbRunFor(s,slug){return (S.pbRuns?.[s.id]||[]).find(r=>r.slug===slug&&Date.now()-Date.parse(r.created_at)<6*3600e3);}
+// Autopilot: playbooks prepared automatically every hour (8am-7pm Detroit) and measured 28 days later.
+function autopilotPanel(s){
+ const runs=S.pbRuns?.[s.id]||[],day=new Date().toLocaleDateString('en-CA',{timeZone:'America/Detroit'}),onDay=r=>new Date(r.created_at).toLocaleDateString('en-CA',{timeZone:'America/Detroit'})===day;
+ const auto=runs.filter(r=>r.auto),todayRuns=auto.filter(onDay),writing=todayRuns.filter(r=>r.status==='writing').length,ready=todayRuns.filter(r=>r.status==='ready').length;
+ const off=s.profile?.autopilot?.enabled===false,cap=Number(s.profile?.autopilot?.daily)||10;
+ const label=slug=>(S.pbLib?.playbooks||[]).find(p=>p.slug===slug)?.title||slug;
+ const METRIC={ai_named_share:['AI mention rate','%'],orders:['Orders (28 days)',''],sales:['Sales (28 days)','$'],search_clicks:['Google clicks (28 days)','']};
+ const fmt=(v,u)=>v==null?'–':u==='$'?money(v):u==='%'?v+'%':num(v);
+ const measured=auto.filter(r=>r.measured_at&&r.measure?.outcome==='measured').slice(0,5).map(r=>{const m=r.measure,[name,u]=METRIC[m.metric]||[m.metric,''],b=m.baseline?.[m.metric],a=m.after?.[m.metric];return `<li><b>${esc(label(r.slug))}</b><span>${esc(name)}: ${fmt(b,u)} → ${fmt(a,u)}</span></li>`;}).join('');
+ const recent=todayRuns.slice(0,6).map(r=>`<li><b>${esc(label(r.slug))}</b>${r.note?` <span class="muted">· ${esc(r.note)}</span>`:''}<span class="pb-auto-state ${esc(r.status)}">${r.status==='ready'?'In your queue':r.status==='writing'?'Writing…':'Didn\'t finish'}</span></li>`).join('');
+ return `<section class="card pb-autopilot"><div class="pb-auto-head"><div><span class="eyebrow">Autopilot</span><h2>${off?'Autopilot is off for this business':`${plural(ready,'item')} prepared today${writing?` · ${writing} writing now`:''}`}</h2><p class="muted">${off?'Playbooks run only when someone starts them.':`Every hour from 8am to 7pm, your agents pick the playbooks this business's evidence supports and prepare them for approval. Up to ${cap} a day; nothing publishes without approval. Each result records a baseline and is measured 28 days after it goes live.`}</p></div>${ready?`<a class="btn primary" href="${href('inbox')}">Review prepared work</a>`:''}</div>${recent?`<ul class="pb-auto-list">${recent}</ul>`:''}${measured?`<h3>Measured results</h3><ul class="pb-auto-list">${measured}</ul>`:''}</section>`;
+}
 function pbCard(s,p,why){
  const r=pbRunFor(s,p.slug),writing=r?.status==='writing'&&Date.now()-Date.parse(r.created_at)<8*60e3,open=S.pbAsk===p.slug;
- const state=writing?`<p class="pb-state"><span class="wl-spin"></span>Writing with your data… usually under 2 minutes. It lands in your review queue.</p>`:r?.status==='ready'?`<p class="pb-state ok">${icon('check',14)} Ready in your queue. <a href="${href('inbox')}">Review it</a></p>`:r?.status==='failed'?`<p class="pb-state err">${esc(r.error||'It didn\'t finish.')}</p>`:'';
+ const state=writing?`<p class="pb-state"><span class="wl-spin"></span>Writing with your data… usually under 2 minutes. It lands in your review queue.</p>`:r?.status==='ready'?`<p class="pb-state ok">${icon('check',14)} ${r.auto?'Prepared automatically. ':''}Ready in your queue. <a href="${href('inbox')}">Review it</a></p>`:r?.status==='failed'?`<p class="pb-state err">${esc(r.error||'It didn\'t finish.')}</p>`:'';
  const ask=open&&p.ask?`<label class="pb-ask">${esc(p.ask)}<input type="text" id="pb-note-${esc(p.slug)}" maxlength="300" autocomplete="off"></label>`:'';
  const btn=writing?'':open||!p.ask?`<button class="btn primary sm" data-pb-run="${esc(p.slug)}">${r?.status==='ready'?'Make another':'Make it'}</button>`:`<button class="btn primary sm" data-pb-open="${esc(p.slug)}">${r?.status==='ready'?'Make another':'Make it'}</button>`;
  return `<article class="pb ${why?'rec':''} ${writing?'busy':''}">${why?`<p class="pb-why">${esc(why)}</p>`:''}<h3>${esc(p.title)}</h3><p>${esc(p.gets)}</p><div class="pb-meta"><span>${esc(p.kind)}</span></div>${ask}${state}<div class="pb-act">${btn}${open?`<button class="btn ghost sm" data-pb-cancel>Cancel</button>`:''}</div></article>`;
@@ -1033,6 +1045,7 @@ function playbooksView(s,d){
    return `<article class="pb studio-example"><small>${esc(p.kind)}</small><h3>${esc(titles[p.slug]||p.title)}</h3><p>${esc(summaries[p.slug]||p.gets)}</p></article>`;
  }).join('');
  return `<section class="pb-studio"><header class="r-header"><div><h1>Playbooks</h1><p class="muted">Explore what your marketing team can do for ${esc(s.name)}.</p></div></header>
+ ${autopilotPanel(s)}
  <nav class="studio-nav" aria-label="Explore playbook capabilities">${nav}</nav>
  <section class="studio-feature"><div class="studio-lead"><small>${esc(selected.label)} / Samaritan</small><h2>${esc(selected.headline)}</h2><p>${esc(selected.description)}</p></div>
  <aside class="studio-lens"><small>${esc(lens.label)}</small><h3>${esc(lens.title)}</h3><p>${esc(lens.copy)}</p></aside></section>

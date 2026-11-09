@@ -103,7 +103,8 @@ VERIFIED BUSINESS DATA (from the business's own accounts; use only these numbers
 ${ctx.text}
 When mentioning delivery costs, phrase it as "delivery is free on orders over $X" if that is a verified fact; never use an excluded phrase.
 PLAYBOOK GUIDANCE (apply the frameworks that fit this business; skip anything that does not apply):
-${pb.guidance}`;
+${pb.guidance}
+MEASUREMENT: end with a short MEASUREMENT section: the one metric this work should move, its baseline from the data above (or "no baseline yet" and how to get one), and when to check it (28 days after it goes live).`;
     const limit = agent ? 12000 : 9000; // skill guidance is condensed to ~4.5k; the rest is the business's own data
     const title = `${pb.title}${note ? ": " + clean(note).slice(0, 80) : ""}`;
     let r: any;
@@ -118,6 +119,143 @@ ${pb.guidance}`;
   }
 }
 
+// ---------- Autopilot: prepare evidence-backed work every day, measure what gets approved ----------
+// Each playbook runs on its own cadence when the business has the evidence it needs. Inputs a person would type
+// (the page, question or location) are filled from that evidence. Nothing publishes: every result is a draft in the
+// review queue. Situational playbooks (apps, paywalls, outbound, partnerships…) stay on demand.
+type Plan = { every: number; needs?: string[]; note?: "question" | "page" | "location" };
+const PLAN: Record<string, Plan> = {
+  "seo-agent-strategy": { every: 30, needs: ["pages"] }, "seo-agent-keywords": { every: 21, needs: ["pages"] },
+  "seo-agent-performance": { every: 7, needs: ["gsc"] }, "seo-agent-competitors": { every: 30, needs: ["aeo"] },
+  "seo-agent-writer": { every: 7, needs: ["aeo"], note: "question" }, "seo-agent-onpage": { every: 7, needs: ["pages"], note: "page" },
+  "seo-agent-internal-links": { every: 21, needs: ["pages"] }, "seo-agent-backlinks": { every: 30, needs: ["pages"] },
+  "seo-agent-indexing": { every: 21, needs: ["pages"] }, "seo-agent-schema": { every: 14, needs: ["pages"], note: "page" },
+  "seo-agent-brand": { every: 30 }, "seo-agent-local": { every: 30, needs: ["local"], note: "location" },
+  "seo-internal-links": { every: 7, needs: ["pages"], note: "page" }, "seo-search-opportunity": { every: 7, needs: ["gsc", "pages"] },
+  "seo-content-overlap": { every: 14, needs: ["pages"] },
+  "product-page-cro": { every: 14, needs: ["shop"] }, "copy-polish": { every: 14, needs: ["shop"] }, "offer-free-delivery": { every: 30, needs: ["shop"] },
+  "collection-copy": { every: 21, needs: ["shop", "pages"] }, "ai-answer-plan": { every: 14, needs: ["aeo"] },
+  "answer-article": { every: 7, needs: ["aeo"], note: "question" }, "snippet-answers": { every: 14, needs: ["aeo"] },
+  "local-page": { every: 30, needs: ["local"], note: "location" }, "seasonal-campaign": { every: 21 },
+  "content-plan": { every: 30, needs: ["aeo"] }, "campaign-plan": { every: 30 }, "ad-copy-set": { every: 30, needs: ["ads"] },
+  "landing-page": { every: 45 }, "homepage-refresh": { every: 60 }, "about-page": { every: 90 }, "comparison-page": { every: 45, needs: ["aeo"] },
+  "seo-audit": { every: 14, needs: ["pages"] }, "schema": { every: 30, needs: ["pages"] }, "site-architecture": { every: 60, needs: ["pages"] },
+  "link-building": { every: 30 }, "directory-submissions": { every: 60 }, "popups": { every: 45 }, "lead-magnets": { every: 45 },
+  "pricing": { every: 60, needs: ["shop"] }, "emails": { every: 30 }, "sms": { every: 45, needs: ["shop"] }, "churn-prevention": { every: 45, needs: ["shop"] },
+  "social": { every: 7 }, "referrals": { every: 60 }, "product-marketing": { every: 90 }, "competitor-profiling": { every: 30, needs: ["aeo"] },
+  "marketing-loops": { every: 90 }, "analytics": { every: 90 }, "conversion-tracking": { every: 60, needs: ["ads"] }, "attribution": { every: 60, needs: ["ads"] },
+};
+const AUTO = { dailyDefault: 10, perTick: 3, pendingLimit: 30 };
+const today = () => new Date().toLocaleDateString("en-CA", { timeZone: "America/Detroit" });
+
+async function evidence(site: any) {
+  const since28 = new Date(Date.now() - 28 * DAY).toISOString(), p = site.profile || {};
+  const [pages, gsc, shop, aeo, ads] = await Promise.all([
+    db.from("pages").select("url,kind,data", { count: "exact" }).eq("site_id", site.id).gte("updated_at", since28).order("updated_at", { ascending: false }).limit(60),
+    db.from("gsc_pages").select("period_end").eq("site_id", site.id).gte("period_end", new Date(Date.now() - 35 * DAY).toISOString().slice(0, 10)).limit(1),
+    db.from("shop_daily").select("products").eq("site_id", site.id).gte("day", since28.slice(0, 10)),
+    db.from("aeo_runs").select("id").eq("site_id", site.id).eq("status", "done").order("started_at", { ascending: false }).limit(1).maybeSingle(),
+    db.from("connectors").select("type").eq("site_id", site.id).in("type", ["google_ads", "meta_ads"]).eq("status", "connected").limit(1),
+  ]);
+  const sales: Record<string, { t: string; s: number }> = {};
+  for (const r of shop.data || []) for (const [h, v] of Object.entries<any>(r.products || {})) (sales[h] ||= { t: v.t, s: 0 }).s += Number(v.s) || 0;
+  const best = Object.entries(sales).sort((a, b) => b[1].s - a[1].s).map(([h, v]) => ({ h, t: v.t }));
+  let misses: string[] = [];
+  if (aeo.data) { const { data } = await db.from("aeo_checks").select("prompt,mentioned").eq("run_id", aeo.data.id).eq("status", "done").limit(400); misses = [...new Set((data || []).filter((c: any) => !c.mentioned).map((c: any) => clean(c.prompt)))]; }
+  const locations = clean(p.market?.locations || p.market?.service || "").split(/\n|;/).map(clean).filter(Boolean);
+  const pagesList = (pages.data || []).filter((r: any) => r.kind !== "article" && clean(r.data?.name || r.data?.title));
+  return { has: { pages: (pages.count || 0) >= 5, gsc: !!gsc.data?.length, shop: best.length > 0, aeo: !!aeo.data, ads: !!ads.data?.length, local: locations.length > 0 }, best, misses, locations, pagesList };
+}
+function pickNote(kind: Plan["note"], ev: any, used: Set<string>) {
+  const fresh = (xs: string[]) => xs.find((x) => x && !used.has(x.toLowerCase()));
+  if (kind === "question") return fresh(ev.misses);
+  if (kind === "location") return fresh(ev.locations);
+  if (kind === "page") return fresh([...ev.best.map((b: any) => b.t), ...ev.pagesList.map((r: any) => clean(r.data?.name || r.data?.title))]);
+  return "";
+}
+async function autopilot() {
+  const report: any[] = [];
+  const { data: sites } = await db.from("sites").select("id,name,domain,profile,brand").eq("active", true);
+  const lib = await library().catch(() => ({ playbooks: [] }));
+  const books = [...seoBooks, ...seoAgents, ...(lib.playbooks || [])];
+  const key = await engineKey(), day = today();
+  const onDay = (ts: string) => new Date(ts).toLocaleDateString("en-CA", { timeZone: "America/Detroit" }) === day;
+  for (const site of sites || []) {
+    const cfg = site.profile?.autopilot || {};
+    if (cfg.enabled === false) { report.push({ site: site.id, skipped: "autopilot off" }); continue; }
+    const cap = Number(cfg.daily) > 0 ? Math.min(60, Number(cfg.daily)) : AUTO.dailyDefault;
+    const { data: runs } = await db.from("playbook_runs").select("slug,status,note,auto,draft_id,created_at").eq("site_id", site.id).gte("created_at", new Date(Date.now() - 95 * DAY).toISOString()).order("created_at", { ascending: false }).limit(1000);
+    const autoToday = (runs || []).filter((r: any) => r.auto && onDay(r.created_at) && r.status !== "failed").length;
+    const draftIds = (runs || []).filter((r: any) => r.auto && r.draft_id).map((r: any) => r.draft_id);
+    const { data: waiting } = draftIds.length ? await db.from("drafts").select("id").in("id", draftIds.slice(0, 500)).eq("status", "needs_review") : { data: [] };
+    const pendingIds = new Set((waiting || []).map((d: any) => String(d.id)));
+    if (autoToday >= cap) { report.push({ site: site.id, skipped: `daily cap ${cap} reached` }); continue; }
+    if (pendingIds.size >= AUTO.pendingLimit) { report.push({ site: site.id, skipped: `${pendingIds.size} drafts waiting for review` }); continue; }
+    const ev = await evidence(site);
+    const candidates = Object.entries(PLAN).map(([slug, plan]) => {
+      const pb = books.find((b: any) => b.slug === slug); if (!pb) return null;
+      if ((plan.needs || []).some((n) => !(ev.has as any)[n])) return null;
+      const mine = (runs || []).filter((r: any) => r.slug === slug);
+      if (mine.some((r: any) => r.status === "writing" && Date.now() - Date.parse(r.created_at) < 20 * 60000)) return null;
+      if (mine.some((r: any) => r.draft_id && pendingIds.has(String(r.draft_id)))) return null; // its last result is still waiting
+      const last = mine.find((r: any) => r.status !== "failed"), lastFail = mine.find((r: any) => r.status === "failed");
+      if (last && Date.now() - Date.parse(last.created_at) < plan.every * DAY) return null;
+      if (lastFail && Date.now() - Date.parse(lastFail.created_at) < 3 * DAY && (!last || lastFail.created_at > last.created_at)) return null;
+      const note = plan.note ? pickNote(plan.note, ev, new Set(mine.map((r: any) => clean(r.note).toLowerCase()))) : "";
+      if (plan.note && !note) return null;
+      const overdue = last ? (Date.now() - Date.parse(last.created_at)) / (plan.every * DAY) : 99; // never run first
+      const evidenceWeight = (plan.needs || []).filter((n) => ["gsc", "shop", "aeo"].includes(n)).length;
+      return { slug, note, score: overdue + evidenceWeight * 0.5 };
+    }).filter(Boolean).sort((a: any, b: any) => b.score - a.score);
+    const take = candidates.slice(0, Math.min(AUTO.perTick, cap - autoToday));
+    const started: string[] = [];
+    for (const c of take as any[]) {
+      const r = await fetch(`${URL_}/functions/v1/playbooks`, { method: "POST", headers: { "Content-Type": "application/json", "x-engine-key": key }, body: JSON.stringify({ action: "run", site_id: site.id, slug: c.slug, note: c.note, auto: true }), signal: AbortSignal.timeout(30000) }).catch((e) => ({ ok: false, statusText: String(e) } as any));
+      if (r.ok) started.push(c.slug + (c.note ? ` (${c.note.slice(0, 40)})` : ""));
+    }
+    report.push({ site: site.id, started, eligible: candidates.length, today: autoToday + started.length, cap, waiting: pendingIds.size });
+  }
+  report.push({ measured: await measurePass() });
+  return { ok: true, day, report };
+}
+
+// ---------- Measurement ----------
+function metricFor(pb: any) {
+  const s = String(pb.slug), g = String(pb.goal || "");
+  if (/answer|snippet|ai-|content-plan|comparison|competitor/.test(s)) return "ai_named_share";
+  if (/offer|product-page|copy-polish|collection|pricing|sms|churn|emails|referrals|seasonal|ad-copy|campaign/.test(s) || /Sell more|Convert/.test(g)) return "orders";
+  return "search_clicks";
+}
+async function snapshot(siteId: string) {
+  const since = new Date(Date.now() - 28 * DAY).toISOString().slice(0, 10), out: Record<string, unknown> = { window_days: 28, since };
+  const [gsc, shop, aeo, audit] = await Promise.all([
+    db.from("gsc_daily").select("clicks,impressions").eq("site_id", siteId).gte("date", since),
+    db.from("shop_daily").select("orders,sales").eq("site_id", siteId).gte("day", since),
+    db.from("aeo_runs").select("id,finished_at").eq("site_id", siteId).eq("status", "done").order("started_at", { ascending: false }).limit(1).maybeSingle(),
+    db.from("audits").select("score,created_at").eq("site_id", siteId).order("created_at", { ascending: false }).limit(1).maybeSingle(),
+  ]);
+  if (gsc.data?.length) { out.search_clicks = gsc.data.reduce((n: number, r: any) => n + (r.clicks || 0), 0); out.search_impressions = gsc.data.reduce((n: number, r: any) => n + (r.impressions || 0), 0); }
+  if (shop.data?.length) { out.orders = shop.data.reduce((n: number, r: any) => n + (r.orders || 0), 0); out.sales = Math.round(shop.data.reduce((n: number, r: any) => n + Number(r.sales || 0), 0)); }
+  if (aeo.data) { const { data } = await db.from("aeo_checks").select("mentioned").eq("run_id", aeo.data.id).eq("status", "done").limit(1000); if (data?.length) { out.ai_named_share = Math.round(100 * data.filter((c: any) => c.mentioned).length / data.length); out.ai_checked_at = aeo.data.finished_at; } }
+  if (audit.data) out.audit_score = audit.data.score;
+  return out;
+}
+// 28 days after a run: approved work gets an after-snapshot; undecided work waits (up to 90 days); rejected is recorded.
+async function measurePass() {
+  const { data: due } = await db.from("playbook_runs").select("id,site_id,draft_id,measure,created_at").eq("status", "ready").is("measured_at", null).lte("review_at", new Date().toISOString()).limit(40);
+  let n = 0;
+  for (const r of due || []) {
+    const { data: d } = await db.from("drafts").select("status,decided_at").eq("id", r.draft_id).maybeSingle();
+    const m = { ...(r.measure || {}) };
+    if (d?.status === "approved") { m.after = await snapshot(r.site_id); m.outcome = "measured"; m.decided_at = d.decided_at; }
+    else if (d?.status === "rejected" || !d) m.outcome = d ? "rejected" : "draft_removed";
+    else if (Date.now() - Date.parse(r.created_at) > 90 * DAY) m.outcome = "never_decided";
+    else { await db.from("playbook_runs").update({ review_at: new Date(Date.now() + 7 * DAY).toISOString() }).eq("id", r.id); continue; }
+    await db.from("playbook_runs").update({ measure: m, measured_at: new Date().toISOString() }).eq("id", r.id); n++;
+  }
+  return n;
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: cors });
   if (req.method !== "POST") return json({ error: "POST only" }, 405);
@@ -127,13 +265,19 @@ Deno.serve(async (req) => {
     const { data: key } = await db.rpc("get_engine_key");
     const uid = key && req.headers.get("x-engine-key") === String(key) ? null : await member(req, body.site_id);
     if (!uid && !(key && req.headers.get("x-engine-key") === String(key))) return json({ error: "Not allowed" }, 401);
+    if (body.action === "autopilot") {
+      if (uid !== null) return json({ error: "Engine key required" }, 401);
+      return json(await autopilot());
+    }
     if (body.action === "run") {
       const pb = seoBooks.find(p=>p.slug===body.slug) || seoAgents.find((p:any)=>p.slug===body.slug) || ((await library()).playbooks || []).find((p: any) => p.slug === body.slug);
       if (!pb) return json({ error: "Unknown playbook" }, 400);
       const { data: busy } = await db.from("playbook_runs").select("id").eq("site_id", body.site_id).eq("slug", pb.slug).eq("status", "writing").gte("created_at", new Date(Date.now() - 5 * 60000).toISOString()).limit(1);
       if (busy?.length) return json({ ok: true, id: busy[0].id, status: "writing" });
       const { data: site } = await db.from("sites").select("id,name,domain,profile,brand").eq("id", body.site_id).single();
-      const { data: run, error } = await db.from("playbook_runs").insert({ site_id: body.site_id, slug: pb.slug, note: clean(body.note).slice(0, 300) || null, created_by: uid }).select("id").single();
+      const auto = uid === null && body.auto === true;
+      const measure = { metric: metricFor(pb), baseline: await snapshot(body.site_id), at: new Date().toISOString() };
+      const { data: run, error } = await db.from("playbook_runs").insert({ site_id: body.site_id, slug: pb.slug, note: clean(body.note).slice(0, 300) || null, created_by: uid, auto, measure, review_at: new Date(Date.now() + 28 * DAY).toISOString() }).select("id").single();
       if (error) throw new Error(error.message);
       // @ts-ignore EdgeRuntime is provided by Supabase
       EdgeRuntime.waitUntil(runPlaybook(run.id, site, pb, clean(body.note)));

@@ -98,12 +98,12 @@ const NEW = [
   ["pricing", "Convert more visitors", "Review your pricing and packaging", "website", "Offer ideas", "A pricing review: packages, value metric, price points to test and how the pricing page should present them.", "Anything about pricing you're unsure of? (optional)"],
   ["paywalls", "Convert more visitors", "Upgrade prompts that convert", "website", "Landing page copy", "Copy and placement for upgrade moments (limits reached, premium features, trials ending), written to persuade without pressure.", "Which upgrade moment? (optional)"],
   // Email & messaging
-  ["emails", "Email & messaging", "An email sequence that keeps customers coming back", "seo", "Email campaign", "A complete sequence (welcome, post-purchase, nurture or win-back) with timing, subject lines and every email written.", "Which sequence? (welcome, post-purchase, win-back…) (optional)"],
-  ["sms", "Email & messaging", "Text messages customers welcome", "seo", "Email campaign", "An SMS plan with welcome, abandoned-cart, post-purchase and promotional texts written, plus consent and timing rules.", "Which texts matter most? (optional)"],
-  ["cold-email", "Email & messaging", "Outreach emails that get replies", "seo", "Email campaign", "A cold outreach sequence for one buyer type: first email, follow-ups, subject lines and reply handling.", "Who are you reaching out to? (optional)"],
-  ["churn-prevention", "Email & messaging", "Keep customers from leaving", "seo", "Email campaign", "A retention plan: why customers leave, save offers, a cancellation or lapse flow and the win-back messages to send.", "Where do you lose customers? (optional)"],
+  ["emails", "Email & messaging", "An email sequence that keeps customers coming back", "seo", "Content brief", "A complete sequence (welcome, post-purchase, nurture or win-back) with timing, subject lines and every email written.", "Which sequence? (welcome, post-purchase, win-back…) (optional)"],
+  ["sms", "Email & messaging", "Text messages customers welcome", "seo", "Content brief", "An SMS plan with welcome, abandoned-cart, post-purchase and promotional texts written, plus consent and timing rules.", "Which texts matter most? (optional)"],
+  ["cold-email", "Email & messaging", "Outreach emails that get replies", "seo", "Content brief", "A cold outreach sequence for one buyer type: first email, follow-ups, subject lines and reply handling.", "Who are you reaching out to? (optional)"],
+  ["churn-prevention", "Email & messaging", "Keep customers from leaving", "seo", "Content brief", "A retention plan: why customers leave, save offers, a cancellation or lapse flow and the win-back messages to send.", "Where do you lose customers? (optional)"],
   // Social & brand
-  ["social", "Social & brand", "A month of social posts", "seo", "Social posts", "A content calendar with posts written for your channels: hooks, captions, carousels and short video scripts.", "Which platforms? (optional)"],
+  ["social", "Social & brand", "A month of social posts", "seo", "Content brief", "A content calendar with posts written for your channels: hooks, captions, carousels and short video scripts.", "Which platforms? (optional)"],
   ["video", "Social & brand", "Short videos worth making", "seo", "Content brief", "Video concepts with scripts, shot lists and where each runs, from product demos to short social clips.", "What should the videos show? (optional)"],
   ["image", "Social & brand", "Image briefs for your marketing", "seo", "Content brief", "Creative briefs and AI-image prompts for hero images, social graphics and product shots that match your brand.", "Where will the images be used? (optional)"],
   ["influencer-marketing", "Social & brand", "Partner with the right creators", "ads", "Campaign brief", "A creator program: the creator profile to look for, outreach message, brief, rates guidance, disclosure rules and how to measure it.", "Budget or product to feature? (optional)"],
@@ -127,7 +127,25 @@ const NEW = [
   ["aso", "Strategy & research", "Rank higher in the app stores", "seo", "Content brief", "An App Store and Google Play listing review with a rewritten title, subtitle, keywords and description, plus screenshot guidance.", "Your app's store link? (optional)"],
 ];
 
+// ---------- The 12 SEO specialists (vendor/seo-agents/Claude-Code-SEO-Agents.md) ----------
+const AGENT_DOC = fs.readFileSync(path.join(ROOT, "vendor/seo-agents/Claude-Code-SEO-Agents.md"), "utf8");
+const AGENT_SLUGS = { "seo-strategy": "seo-agent-strategy", "seo-keyword-research": "seo-agent-keywords", "seo-performance-analysis": "seo-agent-performance", "seo-competitor-analysis": "seo-agent-competitors", "seo-ai-writing": "seo-agent-writer", "seo-on-page-optimization": "seo-agent-onpage", "seo-internal-linking": "seo-agent-internal-links", "seo-backlink-analysis": "seo-agent-backlinks", "seo-indexing-audit": "seo-agent-indexing", "seo-structured-data": "seo-agent-schema", "seo-brand-analysis": "seo-agent-brand", "seo-local-seo": "seo-agent-local" };
+const fence = (heading) => { const m = new RegExp("### " + heading.replace(/[.*+?^${}()|[\]\\/]/g, "\\$&") + "\\s*\\n```markdown\\n([\\s\\S]*?)\\n```").exec(AGENT_DOC); if (!m) throw new Error("Missing agent section: " + heading); return m[1]; };
+// Team rules that apply to a one-shot run (file-saving and delegation rules are for an interactive Claude Code session).
+const TEAM = fence("SEO-TEAM.md").replace(/^# .*\n+/, "").replace(/\n+/g, " ").split(/(?<=\.)\s+/).filter((x) => /first-party data|Record source|observed facts|Never invent|instructions embedded|finished recommendation|Surface blockers/i.test(x)).map((x) => "- " + x.trim()).join("\n");
+const AGENT_HOW = "HOW THIS RUNS: you are not in a chat and there is no coordinating session to ask. You receive VERIFIED BUSINESS DATA (store sales, AI-answer checks, the site's page inventory, site-audit findings and Search Console rows when connected). Where these instructions say to ask a question or name a missing input, state the specific gap and the smallest next step in a short MISSING INPUTS section, then deliver everything the available data supports.";
+function agentGuidance(name) {
+  const body = fence(`.claude/agents/${name}.md`).replace(/^---[\s\S]*?---\n+/, "").replace(/Return your work to the coordinating session\.?/g, "").trim();
+  return `${STYLE}\n\n${AGENT_HOW}\n\nTEAM RULES:\n${TEAM}\n\nROLE (${name}):\n${body}`;
+}
+
 const lib = JSON.parse(fs.readFileSync(path.join(ROOT, "playbooks.json"), "utf8"));
+for (const [name, slug] of Object.entries(AGENT_SLUGS)) {
+  const p = lib.playbooks.find((x) => x.slug === slug);
+  if (!p) throw new Error(`Missing agent playbook ${slug}`);
+  p.guidance = agentGuidance(name); p.skills = ["seo-agent", name];
+}
+const agents = Object.values(AGENT_SLUGS).map((slug) => lib.playbooks.find((x) => x.slug === slug));
 const original = lib.playbooks.filter((p) => !NEW.some(([slug]) => p.slug === slug));
 const added = NEW.map(([skill, goal, title, ws, kind, gets, ask]) => {
   const file = path.join(SKILLS, skill, "SKILL.md");
@@ -137,10 +155,12 @@ const added = NEW.map(([skill, goal, title, ws, kind, gets, ask]) => {
 });
 const all = fs.readdirSync(SKILLS).filter((d) => fs.existsSync(path.join(SKILLS, d, "SKILL.md")));
 const covered = new Set([...original, ...added].flatMap((p) => p.skills || []));
+if (agents.length !== 12) throw new Error("Expected 12 SEO specialists");
 const missing = all.filter((s) => !covered.has(s));
 if (missing.length) throw new Error(`Skills without a playbook: ${missing.join(", ")}`);
 for (const p of added) if (p.guidance.length > BUDGET + STYLE.length + HOW.length + 10) throw new Error(`${p.slug} guidance too long`);
 
-const out = { ...lib, source: `Condensed from marketingskills ${upstream} (Corey Haines), claude-marketing (Rebecca Rae Barton) and marketing-skills (kostja94), all MIT`, version: "3.0.0", upstream: { marketingskills: upstream }, playbooks: [...original, ...added] };
+const out = { ...lib, source: `Condensed from marketingskills ${upstream} (Corey Haines), claude-marketing (Rebecca Rae Barton) and marketing-skills (kostja94), all MIT`, version: "3.1.0", upstream: { marketingskills: upstream }, playbooks: [...original, ...added] };
 fs.writeFileSync(path.join(ROOT, "playbooks.json"), JSON.stringify(out, null, 1) + "\n");
+fs.writeFileSync(path.join(ROOT, "supabase/functions/playbooks/agents.ts"), `// The 12 SEO specialist playbooks. Generated by tools/build-playbooks.mjs from vendor/seo-agents/Claude-Code-SEO-Agents.md.\nexport const seoAgents: any[] = ${JSON.stringify(agents, null, 1)};\n`);
 console.log(`playbooks: ${out.playbooks.length} (${original.length} kept, ${added.length} from skills) · skills covered: ${covered.size - [...covered].filter((s) => !all.includes(s)).length}/${all.length} · marketingskills ${upstream}`);

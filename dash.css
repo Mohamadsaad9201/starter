@@ -537,3 +537,13 @@ body.sp-open .sc-launch,body.sp-open #sc-panel{display:none!important}
 :root:has(#root) .dx-saved-acts a{color:var(--dx-accent);text-decoration:none;display:inline-flex;align-items:center;gap:4px}
 :root:has(#root) .dx-saved-acts button{font:inherit;font-size:12px;background:none;border:0;color:var(--dx-muted);cursor:pointer;padding:0}
 :root:has(#root) .dx-saved-acts button:hover{color:var(--dx-ink);text-decoration:underline}
+/* Autopilot panel on the Playbooks page */
+.pb-autopilot{margin:0 0 20px}
+.pb-auto-head{display:flex;gap:16px;align-items:flex-start;justify-content:space-between;flex-wrap:wrap}
+.pb-auto-head h2{margin:4px 0 6px}
+.pb-auto-head p{margin:0;max-width:640px}
+.pb-auto-list{list-style:none;margin:14px 0 0;padding:0;display:grid;gap:6px}
+.pb-auto-list li{display:flex;flex-wrap:wrap;gap:6px 12px;align-items:baseline;padding:8px 0;border-top:1px solid var(--dx-line,#e6e6eb)}
+.pb-auto-list li>span:last-child{margin-left:auto;font-size:13px;color:var(--dx-muted,#6c7181)}
+.pb-auto-state.ready{color:var(--dx-up,#1a9c87)!important}
+.pb-autopilot h3{margin:16px 0 0;font-size:14px}
