@@ -1,0 +1,125 @@
+/* Impackt Media brand system (Nov 2026): "Built to move forward."
+   Palette: Midnight #0B1220 · Slate #1F2A44 · Mist #7E8CA3 · Stone #D9C4B2 · Ivory #F5F3EF
+   Type: Geist (Söhne substitute) · modern, confident, approachable. Loaded last so it wins over older layers. */
+@font-face{font-family:Geist;src:url(/assets/fonts/Geist-Variable.woff2) format("woff2");font-weight:100 900;font-style:normal;font-display:swap}
+
+:root[data-theme=dark]:has(#root){
+  --b-midnight:#0B1220;--b-slate:#1F2A44;--b-mist:#7E8CA3;--b-stone:#D9C4B2;--b-ivory:#F5F3EF;
+  --dx-bg:#0B1220;--dx-side:#0D1526;--dx-panel:#111A2C;--dx-panel2:#162036;--dx-hover:#1F2A44;--dx-line:#1C2740;--dx-line2:#2B3856;
+  --dx-ink:#F5F3EF;--dx-ink2:#D5D1C9;--dx-muted:#8A97AD;--dx-faint:#5E6A82;
+  --dx-accent:#D9C4B2;--dx-accent-ink:#0B1220;--dx-sel:#1F2A44;
+  --dx-up:#7FD1A4;--dx-up-bg:#12291f;--dx-down:#F08C7E;--dx-down-bg:#2e1a1a;--dx-warn:#E8C27A;
+  --dx-c1:#D9C4B2;--dx-c2:#8FB3D9;--dx-c3:#B7A6E0;--dx-c4:#E0A97A;--dx-c5:#8FD3A8;--dx-c6:#E28A9B;
+  --dx-shadow:0 1px 0 #ffffff05 inset;
+  --bg:#0B1220;--surface:#111A2C;--raised:#162036;--ink:#F5F3EF;--ink-2:#D5D1C9;--muted:#8A97AD;--line:#1C2740;--line-2:#2B3856;
+  --accent:#D9C4B2;--accent-2:#E8DACD;--accent-ink:#0B1220;--accent-soft:#2A2A2E;--accent-line:#6E6253;--btn:#162036;--btn-ink:#F5F3EF;--btn-hover:#1F2A44;
+  --brand:#D9C4B2;--brand-soft:#26262A;--brand-line:#6E6253;--ok:#7FD1A4;--ok-soft:#12291f;--crit:#F08C7E;--crit-soft:#2e1a1a;
+}
+:root[data-theme=light]:has(#root){
+  --b-midnight:#0B1220;--b-slate:#1F2A44;--b-mist:#7E8CA3;--b-stone:#D9C4B2;--b-ivory:#F5F3EF;
+  --dx-bg:#F5F3EF;--dx-side:#FAF8F4;--dx-panel:#FFFFFF;--dx-panel2:#F9F7F3;--dx-hover:#EFEBE4;--dx-line:#E6E1D8;--dx-line2:#D8D0C4;
+  --dx-ink:#0B1220;--dx-ink2:#1F2A44;--dx-muted:#5E6A80;--dx-faint:#8E97A8;
+  --dx-accent:#1F2A44;--dx-accent-ink:#F5F3EF;--dx-sel:#ECE6DC;
+  --dx-up:#2F8A57;--dx-up-bg:#E5F2EA;--dx-down:#B9483A;--dx-down-bg:#F8E7E3;--dx-warn:#9A6A1C;
+  --dx-c1:#1F2A44;--dx-c2:#3F7CAC;--dx-c3:#7E66B0;--dx-c4:#A87648;--dx-c5:#3F8F5F;--dx-c6:#B5506A;
+  --dx-shadow:0 1px 2px #0B122008;
+  --bg:#F5F3EF;--surface:#FFFFFF;--raised:#F1EDE6;--ink:#0B1220;--ink-2:#1F2A44;--muted:#5E6A80;--line:#E6E1D8;--line-2:#D8D0C4;
+  --accent:#1F2A44;--accent-2:#2C3A5C;--accent-ink:#F5F3EF;--accent-soft:#EDE6DC;--accent-line:#CDBFAE;--btn:#FFFFFF;--btn-ink:#0B1220;--btn-hover:#EFEBE4;
+  --brand:#1F2A44;--brand-soft:#EDE6DC;--brand-line:#CDBFAE;--ok:#2F8A57;--ok-soft:#E5F2EA;--crit:#B9483A;--crit-soft:#F8E7E3;
+}
+
+/* Type: Geist everywhere in the workspace (code keeps its mono face) */
+:root:has(#root) body,:root:has(#root) #sc-root{font-family:Geist,"Söhne",Inter,system-ui,-apple-system,"Segoe UI",sans-serif!important;font-feature-settings:"ss01" on}
+:root:has(#root) :is(h1,h2,h3,button,input,textarea,select,.btn,.dx-kpi,.sp-empty h2){font-family:inherit!important}
+:root:has(#root) :is(h1,.dx-head h1){letter-spacing:-.03em;font-weight:500}
+
+/* Brand labels: small caps, wide tracking ("THE BRAND AT A GLANCE") */
+:root:has(#root) :is(.eyebrow,.sx-brief-label,.dx-reports>span,.sp-label,.dx-now-k){text-transform:uppercase;letter-spacing:.2em!important;font-size:10.5px!important;font-weight:500}
+
+/* Logo in the sidebar: the wordmark reads small, so give it room */
+:root:has(#root) .dx-brand{padding:6px 10px 16px}
+:root:has(#root) .dx-brand img{height:31px}
+
+/* Primary buttons: Stone on Midnight at night, Slate on Ivory by day */
+:root[data-theme=dark]:has(#root) :is(.btn.primary,.dx-btn.primary,.sp-send,.sc-send){background:#D9C4B2!important;color:#0B1220!important;border-color:#D9C4B2!important}
+:root[data-theme=light]:has(#root) :is(.btn.primary,.dx-btn.primary,.sp-send,.sc-send){background:#1F2A44!important;color:#F5F3EF!important;border-color:#1F2A44!important}
+
+/* Samaritan workspace */
+:root:has(#root) .sp{--sp-bg:#0B1220;--sp-rail:#0D1526;--sp-raised:#121B2E;--sp-hover:#1F2A44;--sp-line:#ffffff10;--sp-ink:#F5F3EF;--sp-muted:#8A97AD;--sp-accent:#D9C4B2}
+:root[data-theme=light]:has(#root) .sp{--sp-bg:#FBFAF7;--sp-rail:#F5F3EF;--sp-raised:#F1EDE6;--sp-hover:#EAE4DA;--sp-line:#1F2A4418;--sp-ink:#0B1220;--sp-muted:#5E6A80;--sp-accent:#1F2A44}
+:root:has(#root) .sp-mark,:root:has(#root) .sc-avatar-ai,:root:has(#root) .sc-welcome-mark:not(.human){background:#0B1220 url(/assets/k-ivory.svg) center/52% no-repeat!important;color:transparent!important;border:1px solid #ffffff14}
+
+/* Briefing hero: "Good afternoon. Here's what's moving forward." over the mountains */
+.sx-hero{position:relative;overflow:hidden;border-radius:16px;margin:0 0 18px;padding:34px 30px 30px;min-height:150px;display:flex;flex-direction:column;justify-content:flex-end;
+  background:linear-gradient(180deg,#0B122000 0%,#0B122066 45%,#0B1220E6 100%),url(/assets/hero-valley.webp) center 62%/cover no-repeat,#1F2A44;color:#F5F3EF;isolation:isolate}
+.sx-hero::after{content:"";position:absolute;inset:0;border-radius:inherit;border:1px solid #ffffff14;pointer-events:none}
+.sx-hero h2{margin:0!important;color:#F5F3EF!important;font:400 clamp(26px,2.8vw,36px)/1.15 Geist,Inter,sans-serif!important;letter-spacing:-.035em!important}
+.sx-hero p{margin:8px 0 0!important;color:#E7E2DA!important;font-size:15px!important;line-height:1.5!important;max-width:none!important}
+.sx-hero .sx-tag{position:absolute;top:18px;right:22px;font-size:10px;letter-spacing:.32em;text-transform:uppercase;color:#F5F3EFb3}
+.sx-hero.compact{padding:22px 18px 18px;min-height:112px;border-radius:12px;margin:0 0 12px;text-align:left}
+.sx-hero.compact h3{margin:0;color:#F5F3EF;font:500 18px/1.25 Geist,Inter,sans-serif;letter-spacing:-.02em}
+.sx-hero.compact p{font-size:13px!important;margin-top:4px!important}
+:root[data-theme=dark] .sx-brief li.ask::before,.sx-brief li.ask::before{background:#D9C4B2}
+
+/* Overview: the "needs you" card picks up Stone */
+:root[data-theme=dark]:has(#root) .dx-ask{border-color:#D9C4B2!important}
+:root[data-theme=light]:has(#root) .dx-ask{border-color:#1F2A44!important}
+
+/* Sign-in: the collective's front door */
+:root:has(#root) .login{min-height:100vh;display:grid;place-items:center;padding:24px;
+  background:linear-gradient(180deg,#0B122033,#0B1220d9 70%),url(/assets/hero-valley.webp) center 60%/cover no-repeat,#0B1220!important;border:0!important}
+:root:has(#root) .login .card{background:#0B1220cc!important;backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);border:1px solid #ffffff1a!important;color:#F5F3EF!important;max-width:420px;width:100%;border-radius:18px!important;box-shadow:0 30px 80px #0006}
+:root:has(#root) .login .card :is(h1,label,p){color:#F5F3EF!important}
+:root:has(#root) .login .card .muted{color:#C9CFDA!important}
+:root:has(#root) .login h1{font:400 34px/1.1 Geist,Inter,sans-serif!important;letter-spacing:-.04em!important;margin:8px 0 0}
+:root:has(#root) .login h1 span{display:block;color:#D9C4B2!important}
+:root:has(#root) .login .login-kicker{display:block;margin-top:10px;font-size:10.5px;letter-spacing:.3em;text-transform:uppercase;color:#C9CFDA}
+:root:has(#root) .login .wordmark img{filter:brightness(0) invert(1)!important;height:30px;width:auto}
+:root:has(#root) .login input{background:#0B1220!important;border-color:#2B3856!important;color:#F5F3EF!important}
+:root:has(#root) .login .btn.primary{background:#D9C4B2!important;color:#0B1220!important;border-color:#D9C4B2!important}
+:root[data-theme=dark]:has(#root) .dx-ask :is(a,button).dx-btn{background:#D9C4B2!important;color:#0B1220!important;border-color:#D9C4B2!important}
+
+/* Complete the identity across legacy screens, dialogs and the lazy-loaded messenger. */
+:root:has(#root){--body:Geist,Inter,system-ui,sans-serif;--display:var(--body);--serif:var(--body);--im-serif:var(--body);--chart-a:var(--dx-c1);--chart-b:var(--dx-c2);--brand-deep:#1F2A44}
+:root[data-theme=dark]:has(#root){--dx-muted:#A5ADBC;--muted:#A5ADBC;--dx-faint:#8A97AD;--dx-line:#2B3850;--line:#2B3850;--im-paper:#0B1220;--im-card:#111A2C;--im-ink:#F5F3EF;--im-muted:#A5ADBC;--im-rule:#2B3850;--im-indigo:#D9C4B2;--im-tint:#2B2A2B;--serp-title:#D9C4B2;--serp-url:#A5C6B5;--norm:#D9C4B2;--norm-soft:#2B2A2B;--low:#A5ADBC;--low-soft:#19243A}
+:root[data-theme=light]:has(#root){--dx-muted:#566278;--muted:#566278;--dx-faint:#667188;--im-paper:#F5F3EF;--im-card:#FFFFFF;--im-ink:#0B1220;--im-muted:#566278;--im-rule:#E6E1D8;--im-indigo:#1F2A44;--im-tint:#EDE6DC;--serp-title:#1F2A44;--serp-url:#38644E;--norm:#1F2A44;--norm-soft:#EDE6DC;--low:#566278;--low-soft:#F1EDE6}
+:root:has(#root) .dx-brand img{height:30px;max-width:184px;object-fit:contain}
+:root:has(#root) :is(.dx-btn,.btn,.sp-new,.sp-ghost){border-radius:9px;transition:background .16s,border-color .16s,box-shadow .16s}
+:root:has(#root) :is(.dx-btn.primary,.btn.primary):hover{filter:brightness(1.07);box-shadow:0 3px 12px #0002}
+:root:has(#root) :is(button,a,input,textarea,select):focus-visible{outline:2px solid var(--dx-accent);outline-offset:3px}
+:root:has(#root) .dx-side a[aria-current=page]{box-shadow:inset 2px 0 var(--dx-accent)}
+:root:has(#root) :is(.lead-groups>section,.intake-panel){background:var(--dx-panel);border-color:var(--dx-line);color:var(--dx-ink)}
+:root:has(#root) .lead-groups ul{color:var(--dx-ink2)}
+:root:has(#root) .geo-bar{background:var(--dx-c1)}
+/* Messages are loaded after this stylesheet, so scope to the actual root. */
+:root:has(#root) #sc-root{--sc-ink:var(--dx-ink);--sc-ink2:var(--dx-ink2);--sc-mut:var(--dx-muted);--sc-line:var(--dx-line);--sc-raise:var(--dx-panel2);--sc-team:var(--dx-accent);--sc-teambg:var(--dx-sel);font-family:Geist,Inter,system-ui,sans-serif}
+:root:has(#root) #sc-root :is(.sc-panel,.sc-head,.sc-sub,.sc-compose){background:var(--dx-panel);color:var(--dx-ink);border-color:var(--dx-line)}
+:root:has(#root) #sc-root :is(button,input,textarea,select){font-family:inherit}
+:root:has(#root) #sc-root :is(.sc-tabs button.on,.sc-sub select,.sc-compose textarea){background:var(--dx-panel2);color:var(--dx-ink);border-color:var(--dx-line2)}
+:root:has(#root) #sc-root .sc-launch{background:var(--dx-accent);color:var(--dx-accent-ink);border:1px solid var(--dx-line2);box-shadow:0 8px 30px #0003}
+:root:has(#root) #sc-root .sc-launch-ic{background:var(--dx-accent-ink);color:var(--dx-accent)}
+:root:has(#root) #sc-root .sc-bubble{background:var(--dx-panel2);color:var(--dx-ink);border-color:var(--dx-line)}
+:root:has(#root) #sc-root .sc-bubble.mine{background:var(--dx-sel);color:var(--dx-ink)}
+:root:has(#root) #sc-root .sc-welcome-mark.human{background:var(--dx-sel);color:var(--dx-accent)}
+:root:has(#root) .login .card{background:#0B1220EC!important}
+/* Account identity is distinct from Samaritan's moving intelligence mark. */
+:root:has(#root) .sp-mark :is(img,video){opacity:.88;filter:saturate(.25)}
+@media(prefers-reduced-motion:reduce){:root:has(#root) :is(.dx-btn,.btn,.sp-new,.sp-ghost){transition:none}}
+/* Categorical charts stay in the brand family; positive/negative indicators remain semantic. */
+:root[data-theme=dark]:has(#root){--dx-c1:#D9C4B2;--dx-c2:#9EACC2;--dx-c3:#7890AE;--dx-c4:#B9AB9E;--dx-c5:#98ADA7;--dx-c6:#B9B4C5}
+:root[data-theme=light]:has(#root){--dx-c1:#1F2A44;--dx-c2:#516986;--dx-c3:#716C81;--dx-c4:#8A6B55;--dx-c5:#52746A;--dx-c6:#846D79}
+:root:has(#root) #sc-root{--sc-panel:var(--dx-panel);--sc-accent:var(--dx-accent);--sc-wait:var(--dx-warn);--sc-waitbg:var(--high-soft)}
+:root:has(#root) #sc-root :is(.sc-foot,.sc-composer){background:var(--dx-panel2);border-color:var(--dx-line)}
+:root:has(#root) :is(.sp-send,.sc-send,.btn.primary,.dx-btn.primary):disabled{background:var(--dx-panel2)!important;color:var(--dx-muted)!important;border-color:var(--dx-line)!important;box-shadow:none;filter:none;cursor:not-allowed}
+
+/* V12.2: four client destinations, with detail revealed where it belongs. */
+.collective-agency-tools{margin-top:18px;border-top:1px solid var(--dx-line);padding-top:12px}
+.collective-agency-tools>summary{padding:10px 12px;min-height:40px;cursor:pointer;color:var(--dx-muted);font-size:12px;letter-spacing:.02em}
+.collective-agency-tools[open]>summary{color:var(--dx-ink2);margin-bottom:5px}
+.collective-reports{border:1px solid var(--dx-line);background:var(--dx-panel);border-radius:12px;margin:24px 0}
+.collective-reports>summary{cursor:pointer;padding:18px 22px;min-height:52px;font-size:14px;font-weight:500;color:var(--dx-ink2)}
+.collective-reports .dx-reports{margin:0;padding:0 22px 20px}
+:root:has(#root) .collective-chat-links{display:flex;gap:8px 18px;flex-wrap:wrap;margin:6px 0 24px}
+:root:has(#root) .collective-chat-links a{min-height:44px;display:inline-flex;align-items:center;color:var(--sp-accent);font-size:12px;text-decoration:none;border-bottom:1px solid var(--sp-line)}
+:root:has(#root) .collective-chat-links a:hover{border-color:var(--sp-accent)}
+

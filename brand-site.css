@@ -1,0 +1,51 @@
+/* Impackt Collective — shared public identity. Keep structure and copy in the pages. */
+@font-face{font-family:Geist;src:url(/assets/fonts/Geist-Variable.woff2) format("woff2");font-weight:100 900;font-style:normal;font-display:swap}
+:root{
+ --b-midnight:#0B1220;--b-slate:#1F2A44;--b-mist:#7E8CA3;--b-stone:#D9C4B2;--b-ivory:#F5F3EF;
+ --bg:var(--b-midnight);--surface:#111A2C;--raised:#19243A;--ink:var(--b-ivory);--ink-2:#D5D1C9;--muted:#A5ADBC;--line:#2B3850;--line-2:#46536B;
+ --accent:var(--b-stone);--accent-ink:var(--b-midnight);--accent-soft:#2B2A2B;--accent-line:#7D7065;
+ --c-paper:var(--b-midnight);--c-soft:#121B2E;--c-ink:var(--b-ivory);--c-ink2:#D5D1C9;--c-muted:#A5ADBC;--c-line:#2B3850;--c-night:#090F1B;
+ --c-violet:var(--b-stone);--c-violet2:#E8DACD;--c-violet-soft:#2B2A2B;
+ --o-night:var(--b-midnight);--o-mid:#121B2E;--o-slate:var(--b-slate);--o-dusk:var(--b-mist);--o-mist:#C9CFDA;--o-peach:var(--b-stone);--o-ink:var(--b-ivory);--o-ink2:#D5D1C9;--o-muted:#A5ADBC;
+ --brand:var(--b-stone);--brand-soft:#2B2A2B;--brand-line:#7D7065;--chart-a:var(--b-stone);--chart-b:var(--b-mist);
+ --c-sans:Geist,Inter,system-ui,sans-serif;--c-display:var(--c-sans);--o-serif:var(--c-sans);--serif:var(--c-sans);--sans:var(--c-sans);--body:var(--c-sans);--display:var(--c-sans)
+}
+html body{background:var(--b-midnight);color:var(--b-ivory);font-family:var(--c-sans);-webkit-font-smoothing:antialiased}
+html body :is(button,input,textarea,select,.c-btn,.o-btn,.o-pill,.o-copy>p,.o-proof b,.o-window figcaption,.ab-page p,.ab-eyebrow){font-family:var(--c-sans)}
+html body :is(h1,h2,h3){font-family:var(--c-sans)!important;font-style:normal!important}
+html body h1{font-weight:400!important;letter-spacing:-.045em!important}
+html body :is(h2,h3){font-weight:450!important;letter-spacing:-.03em!important}
+html body :is(h1,h2) :is(em,i){font-style:normal!important}
+html body :is(h1,h2) :is(em,.mute){color:var(--b-stone);background:none;-webkit-text-fill-color:currentColor}
+html body :is(.eyebrow,.o-eyebrow,.c-eyebrow,.kicker,.ab-eyebrow){text-transform:uppercase;letter-spacing:.2em;color:#ACB5C5}
+::selection{background:var(--b-stone);color:var(--b-midnight)}
+:focus-visible{outline:2px solid var(--b-stone);outline-offset:4px}
+/* Actions feel warm and deliberate against the cool landscape. */
+html body :is(.c-btn.primary,.o-btn,.gx-btn.primary,.gx-btn.signal,.btn.primary,.cta.primary){background:var(--b-stone)!important;color:var(--b-midnight)!important;border-color:var(--b-stone)!important;box-shadow:0 2px 0 #ffffff0d inset,0 6px 18px #0002}
+html body :is(.c-btn.primary,.o-btn,.gx-btn.primary,.gx-btn.signal,.btn.primary,.cta.primary):hover{background:#E8DACD!important;border-color:#E8DACD!important}
+html body :is(.c-btn.line,.c-btn.glass,.gx-btn.ghost){background:#1F2A4440;color:var(--b-ivory);border-color:#7E8CA36B}
+html body :is(.c-btn.line,.c-btn.glass,.gx-btn.ghost):hover{background:var(--b-slate);border-color:var(--b-mist)}
+.c-logo img{height:30px;width:auto;max-width:190px}
+.c-nav.solid,body.c-sub .c-nav{background:#0B1220F2!important;border-bottom:1px solid #7E8CA32B;box-shadow:0 8px 24px #00000012;backdrop-filter:blur(18px)}
+.c-nav.solid .c-logo img{filter:brightness(0) invert(1)}
+.c-drop>div,.c-burger>div{background:#111A2CFB!important;border-color:var(--c-line);box-shadow:0 20px 60px #0005}
+.c-drop>div a:hover,.c-burger>div a:hover{background:var(--b-slate)!important}
+/* Landscape remains the existing asset, with restrained midnight grading. */
+.o-sky{background-image:linear-gradient(180deg,#0B1220A8 0%,#0B122038 44%,#0B122000 64%,#0B1220C9 100%),url(/assets/hero-valley.webp)!important;background-position:center 55%!important}
+.o-hero h1{color:var(--b-ivory)}
+.o-hero h1 span{color:var(--b-stone)}
+.o-copy>p{color:#DDDAD5}
+.o-pill{border-color:#D9C4B236;background:#0B122055;color:#E3DFD9}
+.o-window{border-color:#7E8CA34D;box-shadow:0 40px 100px -30px #0009,0 0 0 5px #F5F3EF08}
+.o-window figcaption{background:#0B1220DD;border-color:#7E8CA34D;color:#D5D1C9}
+/* Secondary pages use the same identity; chart/status colours keep their meaning. */
+.gx,.gx-nav,.gx-footer{--paper:var(--b-midnight);--paper2:#121B2E;--card:#111A2C;--ink:var(--b-ivory);--ink2:#D5D1C9;--muted:#A5ADBC;--line:#2B3850;--line2:#46536B;--signal:var(--b-stone);--signal2:#E8DACD;--signal-soft:#2B2A2B;--night:#090F1B;--night2:#121B2E;--sans:var(--c-sans);--serif:var(--c-sans)}
+.ab-page{--ab-ink:var(--b-ivory);--ab-muted:#A5ADBC;--ab-blue:var(--b-stone);--ab-line:#7E8CA32B;background:var(--b-midnight)}
+.ab-page em{color:var(--b-stone)}
+.ab-system-visual,.ab-expertise article,.ab-story-card{border-color:#7E8CA32B}
+html body .c-plan.pop{background:linear-gradient(145deg,#29354B,#121B2E);border-color:#7E8CA3}
+html body .c-plan.pop .n{color:var(--b-stone)}
+html body .c-close{background-color:var(--b-midnight)}
+.c-footer{background:#090F1B;border-color:#7E8CA32B}
+@media(max-width:700px){.o-sky{background-image:linear-gradient(180deg,#0B1220A8,#0B122038 45%,#0B1220C9),url(/assets/hero-valley-m.webp)!important}.c-nav .c-logo img{height:25px;max-width:150px}}
+@media(prefers-reduced-motion:reduce){html{scroll-behavior:auto}}
