@@ -1,0 +1,30 @@
+/* Public sign-up page (/signup/). Layout comes from onboarding.css; this file supplies what the app's
+   stylesheets normally provide there: the Geist font, light/dark tokens and buttons. Values match dash.css. */
+@font-face{font-family:Geist;src:url(/assets/fonts/Geist-Variable.woff2) format("woff2");font-weight:100 900;font-display:swap}
+:root{--dx-bg:#f6f6f8;--dx-panel:#ffffff;--dx-panel2:#f7f7f9;--dx-ink:#0c0e14;--dx-ink2:#3a3f4c;--dx-muted:#6c7181;--dx-line:#e6e6eb;--dx-line2:#d8d9e0;--dx-accent:#26304b;--dx-accent-ink:#ffffff;--dx-hover:#f1f1f4;--dx-c1:#3c4a70;--dx-down:#d93c3c;--dx-down-bg:#fdeaea;--dx-up:#1a9c87;color-scheme:light}
+@media (prefers-color-scheme:dark){:root:not([data-theme=light]){--dx-bg:#07090f;--dx-panel:#10141e;--dx-panel2:#151a26;--dx-ink:#f3f5f9;--dx-ink2:#c4cad6;--dx-muted:#7f8799;--dx-line:#1e2432;--dx-line2:#2a3244;--dx-accent:#a5bff4;--dx-accent-ink:#0b1424;--dx-hover:#1a2030;--dx-c1:#a5bff4;--dx-down:#ff6b6b;--dx-down-bg:#2e1518;--dx-up:#7cd4c0;color-scheme:dark}}
+:root[data-theme=dark]{--dx-bg:#07090f;--dx-panel:#10141e;--dx-panel2:#151a26;--dx-ink:#f3f5f9;--dx-ink2:#c4cad6;--dx-muted:#7f8799;--dx-line:#1e2432;--dx-line2:#2a3244;--dx-accent:#a5bff4;--dx-accent-ink:#0b1424;--dx-hover:#1a2030;--dx-c1:#a5bff4;--dx-down:#ff6b6b;--dx-down-bg:#2e1518;--dx-up:#7cd4c0;color-scheme:dark}
+*,*::before,*::after{box-sizing:border-box}
+html,body{margin:0;background:var(--dx-bg);color:var(--dx-ink);-webkit-font-smoothing:antialiased}
+body{font-family:Geist,Inter,system-ui,-apple-system,"Segoe UI",sans-serif}
+a{color:inherit}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;min-height:42px;padding:0 16px;border-radius:10px;border:1px solid var(--dx-line2);background:var(--dx-panel);color:var(--dx-ink);font:600 14px/1 inherit;font-family:inherit;cursor:pointer;text-decoration:none;white-space:nowrap}
+.btn:hover{background:var(--dx-hover)}
+.btn:focus-visible{outline:2px solid var(--dx-accent);outline-offset:2px}
+.btn.primary{background:var(--dx-accent);border-color:var(--dx-accent);color:var(--dx-accent-ink)}
+.btn.primary:hover{filter:brightness(1.08)}
+.btn.ghost{background:transparent;border-color:transparent}
+.btn[disabled]{opacity:.6;cursor:default}
+.ob-top .wordmark img{width:118px;height:auto;display:block}
+[data-theme=dark] .ob-top .wordmark img{filter:brightness(0) invert(1)}
+.ob-msg.bot .samaritan-mark{display:inline-block}
+.ob-scan{position:relative}
+.ob-scan .samaritan-mark{border-radius:50%;overflow:hidden;background:#0B1220}
+.su-spin{margin-left:auto;width:18px;height:18px;border-radius:50%;border:2px solid var(--dx-line2);border-top-color:var(--dx-accent);animation:su-spin .9s linear infinite;flex:none}
+@keyframes su-spin{to{transform:rotate(360deg)}}
+@media (prefers-reduced-motion:reduce){.su-spin{animation:none}}
+.su-rival{display:flex;flex-direction:column;gap:2px;flex:1;min-width:0}
+.su-rival .ob-muted{font-size:12.5px;overflow-wrap:anywhere}
+.ob-link.inline{padding:0;font-size:inherit}
+.ob-form select{width:100%;font:inherit;font-size:15px;padding:10px 12px;border:1px solid var(--dx-line2);border-radius:10px;background:var(--dx-panel);color:var(--dx-ink)}
+@media (max-width:640px){.ob-inline{flex-direction:column}.ob-inline .btn{width:100%}}

@@ -28,7 +28,7 @@
     if (saved?.v === 1 && (!siteFromHash || saved.sid === siteFromHash)) return saved;
     if (siteFromHash) { // resuming a business created earlier (e.g. after the Google redirect in another tab)
       const s = ctx.sites().find((x) => x.id === siteFromHash);
-      if (s) return { v: 1, step: "gsc", domain: s.domain, sid: s.id, name: s.name, platform: s.platform, competitors: s.profile?.competitors || [], answers: {} };
+      if (s) return { v: 1, step: "gsc", resumed: true, domain: s.domain, sid: s.id, name: s.name, platform: s.platform, competitors: s.profile?.competitors || [], answers: {} };
     }
     return { v: 1, step: "domain", domain: "", sid: null, name: "", platform: "other", intake: null, competitors: [], answers: {} };
   }
@@ -39,7 +39,7 @@
     if (step === "welcome") setTimeout(() => st.step === "welcome" && goStep("site"), 650);
     if (step === "site" && !st.intake && !st.sid) readSite();
     if (step === "gsc") loadGsc();
-    if (step === "opportunity") findOpportunity();
+    if (step === "opportunity" && st.answers.gsc && st.answers.gsc !== "Later") findOpportunity();
   }
 
   // ---------- rendering ----------
@@ -58,13 +58,16 @@
 
   function draw() {
     if (!root || !root.isConnected) return;
-    botN = 0; liveBot = -1; STEPS.slice(0, STEPS.indexOf(st.step) + 1).forEach(view); liveBot = botN - 1; // count first, then animate the last one
+    // A resumed journey (after sign-up) starts at Search Console: earlier steps were done on the sign-up page.
+    const steps = STEPS.slice(0, STEPS.indexOf(st.step) + 1).filter((x) => !st.resumed || STEPS.indexOf(x) >= STEPS.indexOf("gsc"));
+    const intro = () => st.resumed ? bot(`<b>Welcome to Impackt Media${st.name ? ", " + esc(st.name) : ""}.</b> Your workspace for <b>${esc(bare(st.domain))}</b> is ready, and I've started checking every page of your site. A few quick steps left.`) : "";
+    botN = 0; liveBot = -1; intro(); steps.forEach(view); liveBot = botN - 1; // count first, then animate the last one
     botN = 0;
-    const thread = STEPS.slice(0, STEPS.indexOf(st.step) + 1).map(view).join("");
+    const thread = intro() + steps.map(view).join("");
     root.innerHTML = `<div class="ob">
-      <header class="ob-top">${ctx.wordmark()}${progress()}<a class="ob-exit" href="#/agency">${st.sid ? "Save & exit" : "Exit"}</a></header>
+      <header class="ob-top">${ctx.wordmark()}${progress()}<a class="ob-exit" href="${esc(ctx.exitHref ? ctx.exitHref(st.sid) : "#/agency")}">${st.sid ? "Save & exit" : "Exit"}</a></header>
       <main class="ob-thread" aria-live="polite">${thread}</main>
-      <footer class="ob-foot">Need the full form instead? <a href="#/add-site">Add a client manually</a></footer>
+      ${ctx.owner ? "" : `<footer class="ob-foot">Need the full form instead? <a href="#/add-site">Add a client manually</a></footer>`}
     </div>`;
     const active = root.querySelector(".ob-step.active");
     active?.scrollIntoView({ block: "end", behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" });
@@ -90,9 +93,9 @@
       case "opportunity":
         return wrap(opportunityView(now));
       case "attribution":
-        return wrap(bot(`Quick one for us: how did ${esc(st.name)} find Impackt Media?`) + (now ? card(attributionForm()) : you(a.attribution || "Skipped")));
+        return wrap(bot(ctx.owner ? `Quick one for us: how did you find Impackt Media?` : `Quick one for us: how did ${esc(st.name)} find Impackt Media?`) + (now ? card(attributionForm()) : you(a.attribution || "Skipped")));
       case "level":
-        return wrap(bot(`Last question. How comfortable is the client with SEO? Samaritan adjusts how it explains its work.`) + (now ? card(levelForm()) : you(LEVELS.find((l) => l[0] === a.level)?.[1] || "")));
+        return wrap(bot(ctx.owner ? `Last question. How comfortable are you with SEO? I'll adjust how I explain my work.` : `Last question. How comfortable is the client with SEO? Samaritan adjusts how it explains its work.`) + (now ? card(levelForm()) : you(LEVELS.find((l) => l[0] === a.level)?.[1] || "")));
       case "done":
         return wrap(doneView());
     }
@@ -203,6 +206,9 @@
     const g = st.gsc || {};
     if (busy === "gsc-load") return `<p class="ob-muted">Checking the Google connection…</p>`;
     if (g.unavailable) return `<p>Google sign-in isn't set up for Impackt Media yet. Register it once in <a href="#/w/${encodeURIComponent(st.sid)}/apps">Impackt Media apps</a>, then come back.</p>${status()}<div class="ob-actions"><button class="btn ghost" data-ob="gsc-later">Continue without it</button></div>`;
+    if (g.connector && !g.connector.config?.property && ctx.owner) {
+      return `<p>Google is connected${g.connector.config?.account ? ` as <b>${esc(g.connector.config.account)}</b>` : ""}, but none of its Search Console properties is <b>${esc(bare(st.domain))}</b>.</p><p class="ob-muted">Connect the Google account that manages your website in Search Console. If your site isn't in Search Console yet, you can add it later from Connections.</p>${status()}<div class="ob-actions"><button class="btn primary" data-ob="gsc-connect">Use another Google account</button><button class="btn ghost" data-ob="gsc-later">Later</button></div>`;
+    }
     if (g.connector && !g.connector.config?.property) {
       if (!g.props) return `<p class="ob-muted">Loading the Search Console properties for this Google account…</p>`;
       if (!g.props.length) return `<p>This Google account can't see ${esc(bare(st.domain))} in Search Console.</p><p class="ob-muted">Reconnect with the Google account that owns the property, or add the client's site to Search Console first.</p>${status()}<div class="ob-actions"><button class="btn primary" data-ob="gsc-connect">Use another Google account</button><button class="btn ghost" data-ob="gsc-later">Later</button></div>`;
@@ -225,7 +231,7 @@
       st.gsc = { connector: c };
       if (!c) { const info = await ctx.connectInfo(); if (!info?.providers?.google) st.gsc.unavailable = true; }
       else if (c.status === "connected" && c.config?.property) { busy = ""; return syncAndContinue(); }
-      else if (!c.config?.property) { busy = ""; draw(); st.gsc.props = await ctx.gscProperties(c.id); }
+      else if (!c.config?.property && !ctx.owner) { busy = ""; draw(); st.gsc.props = await ctx.gscProperties(c.id); }
     } catch (e) { note = esc(e.message); }
     busy = ""; if (st.step === "gsc") draw();
   }
@@ -294,7 +300,7 @@
     const source = form.elements.source.value, detail = form.elements.detail.value.trim();
     if (!source && !detail) { note = "Pick an option, or skip."; return draw(); }
     busy = "saving"; draw();
-    try { await ctx.saveProfile(st.sid, (p) => ({ ...p, attribution: { source, detail, at: new Date().toISOString() } })); st.answers.attribution = [source, detail].filter(Boolean).join(" · "); goStep("level"); }
+    try { await ctx.saveAnswers(st.sid, { attribution: { source, detail } }); st.answers.attribution = [source, detail].filter(Boolean).join(" · "); goStep("level"); }
     catch (e) { busy = ""; note = "Couldn't save: " + esc(e.message); draw(); }
   }
   function levelForm() {
@@ -302,7 +308,7 @@
   }
   async function saveLevel(level) {
     busy = "saving"; draw();
-    try { await ctx.saveProfile(st.sid, (p) => ({ ...p, seo_level: level, onboarded_at: new Date().toISOString() })); st.answers.level = level; goStep("done"); }
+    try { await ctx.saveAnswers(st.sid, { seo_level: level, onboarded: true }); st.answers.level = level; goStep("done"); }
     catch (e) { busy = ""; note = "Couldn't save: " + esc(e.message); draw(); }
   }
 
@@ -318,7 +324,7 @@
   }
   function doneView() {
     const lvl = LEVELS.find((l) => l[0] === st.answers.level)?.[3];
-    return bot(`<b>${esc(st.name)} is set up.</b> The site check is running, ${st.answers.gsc && st.answers.gsc !== "Later" ? "Search Console is connected" : "Search Console can be connected any time"}${lvl ? `, and Samaritan will explain its work ${esc(lvl)}` : ""}. Where do you want to start?`)
+    return bot(`<b>${ctx.owner ? "You're all set." : esc(st.name) + " is set up."}</b> The site check is running, ${st.answers.gsc && st.answers.gsc !== "Later" ? "Search Console is connected" : "Search Console can be connected any time"}${lvl ? `, and Samaritan will explain its work ${esc(lvl)}` : ""}. Where do you want to start?`)
       + card(`<div class="ob-tracks">${tracks().map(([k, label, sub, prompt]) => `<button type="button" class="ob-track" data-ob="track" data-prompt="${esc(prompt)}" data-track="${k}"><span class="ob-track-label">${esc(label)}</span><b>${esc(sub)}</b><span class="ob-track-go" aria-hidden="true">Ask Samaritan ↗</span></button>`).join("")}</div><div class="ob-actions"><button type="button" class="btn ghost" data-ob="finish">Go to Overview</button></div>`);
   }
 
@@ -369,7 +375,7 @@
       if (st.step === "welcome") goStep("site");
       else if (st.step === "site" && !st.intake && !st.sid && !st.intakeError) readSite();
       else if (st.step === "gsc") loadGsc();
-      else if (st.step === "opportunity" && !st.opp) findOpportunity();
+      else if (st.step === "opportunity" && !st.opp && st.answers.gsc && st.answers.gsc !== "Later") findOpportunity();
     },
     reset() { if (ctx) clear(); st = null; },
   };

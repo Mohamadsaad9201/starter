@@ -518,6 +518,8 @@ async function boot() {
   S.isAdmin = admin === true;
 
   try { await loadSites(); } catch (e) { return renderError(e); }
+  const claimed = await claimSignup(session);
+  if (claimed) { try { await loadSites(); } catch (e) { return renderError(e); } location.hash = "#/onboarding/" + encodeURIComponent(claimed); }
   if(!S.isAdmin&&!S.sites.length)return renderNoAccess();
   if(S.isAdmin){loadAeoInfo(); loadConnectInfo();}
   const result = readConnectResult();
@@ -534,8 +536,9 @@ async function route() {
   parseHash();
   const nav = (route.n = (route.n || 0) + 1), stale = () => nav !== route.n; // a newer navigation wins; a finished slow load never pulls the user back
   if (!S.session) return;
-  if ((S.page === "new" || S.page === "onboarding") && !S.isAdmin) return go(S.siteId ? href("ask") : "#/");
-  if (S.page === "onboarding") { window.SamaritanChat?.unmount(); return window.ImpacktOnboarding ? window.ImpacktOnboarding.mount($root, onboardingCtx, S.obSite) : renderShell(addSiteView()); }
+  const ownerOnboarding = S.page === "onboarding" && !S.isAdmin && !!S.obSite && siteById(S.obSite)?.role === "owner";
+  if ((S.page === "new" || S.page === "onboarding") && !S.isAdmin && !ownerOnboarding) return go(S.siteId ? href("ask") : "#/");
+  if (S.page === "onboarding") { window.SamaritanChat?.unmount(); if (ownerOnboarding) S.siteId = S.obSite; return window.ImpacktOnboarding ? window.ImpacktOnboarding.mount($root, S.isAdmin ? onboardingCtx : ownerOnboardingCtx, S.obSite) : renderShell(addSiteView()); }
   if (S.page === "new") { if (!S.siteId && S.sites[0]) S.siteId = S.sites[0].id; return renderShell(addSiteView()); }
   if (S.page === "agency" || (S.isAdmin && !location.hash.replace(/^#\/?/, ""))) {
     if (!S.isAdmin) return go(href("today"));
@@ -584,6 +587,30 @@ function renderLogin(msg) {
     if (error) { btn.disabled = false; btn.textContent = "Email me a sign-in link"; return renderLogin(`Could not send the link: ${error.message}`); }
     renderLogin(`Check ${email} for your sign-in link. It opens Impackt Media already signed in.`);
   });
+}
+// Self-serve sign-up hand-off (/signup/ → email link → here): create the workspace from the saved analysis.
+async function signupFn(action, body = {}) {
+  const { data: { session } } = await sb.auth.getSession();
+  const res = await fetch(`${CFG.supabaseUrl}/functions/v1/signup`, { method: "POST", headers: { "Content-Type": "application/json", apikey: CFG.supabaseAnonKey, Authorization: `Bearer ${session?.access_token}` }, body: JSON.stringify({ action, ...body }) });
+  const out = await res.json().catch(() => ({}));
+  if (!res.ok) { const e = new Error(out.error || `Sign-up error ${res.status}`); e.status = res.status; throw e; }
+  return out;
+}
+async function claimSignup(session) {
+  let pending = null;
+  try { pending = JSON.parse(localStorage.getItem("impackt:signup") || "null"); } catch { /* private mode */ }
+  if (!pending?.token || !session?.access_token) return null;
+  if (Date.now() - (pending.at || 0) > 7 * 86400_000) { try { localStorage.removeItem("impackt:signup"); } catch { /* */ } return null; }
+  try {
+    const r = await signupFn("claim", { token: pending.token, edits: pending.edits || {} });
+    try { localStorage.removeItem("impackt:signup"); sessionStorage.removeItem("impackt:signup-draft"); } catch { /* */ }
+    return r.site_id;
+  } catch (e) {
+    // Permanent problems (already used, website taken, workspace limit): stop retrying and say why.
+    if ([403, 404, 409].includes(e.status)) { try { localStorage.removeItem("impackt:signup"); } catch { /* */ } }
+    setTimeout(() => toast("We couldn't finish setting up your workspace: " + e.message, true), 400);
+    return null;
+  }
 }
 function renderNoAccess() {
   $root.innerHTML = `<div class="login"><div class="card">${wordmark("/")}<h2 style="font-size:22px">This account doesn't have access yet</h2><p class="muted" style="margin:0">${esc(S.session?.user?.email)} is signed in, but no workspace has been shared with it.</p><button class="btn" id="signout">Sign out</button></div></div>`;
@@ -724,10 +751,12 @@ function clientView(s,d){
  if(S.page==='inbox')return inboxView(s,d);
  if(S.page==='playbooks')return playbooksView(s,d);
  if(!['fixes','content'].includes(S.page))return homeView(s,d);
- return `${pageHead('Review workspace',kind==='draft'?'Content to review':'Website improvements',review?'Review the complete proposal, then approve it or request changes. Approval does not publish.':'Read-only access to proposed work.')}<div class="list">${rows.slice(0,100).map(item=>{
+ const owner=role==='owner';
+ return `${pageHead('Review workspace',kind==='draft'?'Content to review':'Website improvements',owner?'Approve a change to publish it on your website. Every change is checked on the live page and can be rolled back.':review?'Review the complete proposal, then approve it or request changes. Approval does not publish.':'Read-only access to proposed work.')}<div class="list">${rows.slice(0,100).map(item=>{
+ if(owner)return ownerReviewCard(s,d,kind,item);
  // JSONB key order differs from browser insertion order; compare fields, not serialization.
  const matching=d.reviews.find(r=>r.item_kind===kind&&r.item_id===String(item.id)&&Object.entries(clientSnapshot(kind,item)).every(([k,v])=>r.snapshot[k]===v));
- return `<article class="card"><div class="card-head"><h3>${esc(kind==='draft'?item.title:item.page_name||item.url)}</h3><span class="client-role">${matching?esc(matching.decision.replaceAll('_',' ')):'Needs review'}</span></div>${kind==='fix'?`<p class="kind">${esc(FIELD[item.field]||item.field)}</p><div class="row2"><div><b>Current</b><p class="review-copy">${esc(item.before)}</p></div><div><b>Proposed</b><p class="review-copy">${esc(item.after)}</p></div></div>`:`<div class="review-copy">${readableDraft(item.body)}</div>${item.kind==='Blog post'?articleLinkReview(item.body):''}`}${review?suggestBox(kind,item):knowledgeCorrectionForm(kind,item.id)}${review?`<details><summary>Record your decision</summary><p>This records your review of this exact version. The agency must still approve execution.</p><label class="approval-check"><input type="checkbox" id="client-read-${esc(item.id)}"> I have read this complete proposal.</label><div class="actions"><button class="btn primary" data-client-decision="approved" data-kind="${kind}" data-id="${esc(item.id)}">Approve this version</button><button class="btn" data-client-decision="changes_requested" data-kind="${kind}" data-id="${esc(item.id)}">Request changes</button></div></details>`:''}</article>`;}).join('')||'<div class="empty">No items awaiting review. Your agency will prepare the next steps.</div>'}</div>`;
+ return `<article class="card"><div class="card-head"><h3>${esc(kind==='draft'?item.title:item.page_name||item.url)}</h3><span class="client-role">${matching?esc(matching.decision.replaceAll('_',' ')):'Needs review'}</span></div>${kind==='fix'?`<p class="kind">${esc(FIELD[item.field]||item.field)}</p><div class="row2"><div><b>Current</b><p class="review-copy">${esc(item.before)}</p></div><div><b>Proposed</b><p class="review-copy">${esc(item.after)}</p></div></div>`:`<div class="review-copy">${readableDraft(item.body)}</div>${item.kind==='Blog post'?articleLinkReview(item.body):''}`}${review?suggestBox(kind,item):knowledgeCorrectionForm(kind,item.id)}${review?`<details><summary>Record your decision</summary><p>This records your review of this exact version. The agency must still approve execution.</p><label class="approval-check"><input type="checkbox" id="client-read-${esc(item.id)}"> I have read this complete proposal.</label><div class="actions"><button class="btn primary" data-client-decision="approved" data-kind="${kind}" data-id="${esc(item.id)}">Approve this version</button><button class="btn" data-client-decision="changes_requested" data-kind="${kind}" data-id="${esc(item.id)}">Request changes</button></div></details>`:''}</article>`;}).join('')||'<div class="empty">No items awaiting review. Your agency will prepare the next steps.</div>'}</div>${owner&&kind==='fix'?ownerPublished(s,d):''}`;
 }
 function accessView(s){
  if(!S.isAdmin)return '<div class="empty">Agency access required.</div>';
@@ -1202,13 +1231,14 @@ function queueAll(s,d){
  for(const g of reviewGroups(s,d)){
   for(const f of g.fixes){const exp=!!f.data?.experiment_id;out.push({key:'fix:'+f.id,kind:'fix',id:f.id,ch:g.key,chName:g.name,item:f,
    title:`${FIELD[f.field]||f.field} · ${f.page_name||f.url||'page'}`,why:f.before?`Now: “${qClip(f.before,70)}” → “${qClip(f.after,90)}”`:`Adds: “${qClip(f.after,140)}”`,
-   direct:S.isAdmin&&!exp,quick:S.isAdmin&&!exp,label:'Publish',note:'Single change, checked on the live page, one-click rollback.'});}
-  for(const x of g.drafts){const o=oppFor(x.id);let direct=S.isAdmin,label='Approve',act='draft';
+   direct:(S.isAdmin||isOwner())&&!exp,quick:(S.isAdmin||isOwner())&&!exp,label:'Publish',note:'Single change, checked on the live page, one-click rollback.'});}
+  for(const x of g.drafts){const o=oppFor(x.id);let direct=S.isAdmin||isOwner(),label='Approve',act='draft';
    if(o&&o.publishable&&o.target_kind==='article'){act='article';label='Add to article';}
    else if(o&&o.publishable){direct=false;label='Review publication';}
    else if(o&&!o.publishable){direct=false;label='Review & copy';}
    if(excludedCopy(x.title+' '+x.body))direct=false;
-   out.push({key:'draft:'+x.id,kind:'draft',act,id:x.id,opp:o,ch:g.key,chName:g.name,item:x,title:x.title,why:o?qClip(o.why,170):`${x.kind} · ${qClip(x.body,140)}`,direct:S.isAdmin&&direct,quick:false,label});}
+   if(isOwner()&&(o||act==='article'))direct=false; // page and article publishing stay with the agency flow
+   out.push({key:'draft:'+x.id,kind:'draft',act,id:x.id,opp:o,ch:g.key,chName:g.name,item:x,title:x.title,why:o?qClip(o.why,170):`${x.kind} · ${qClip(x.body,140)}`,direct:(S.isAdmin||isOwner())&&direct,quick:false,label});}
   if(g.changes.length)out.push({key:'paid:all',kind:'paid',ch:'paid',chName:g.name,title:`${plural(g.changes.length,'ad change')} proposed`,why:'Budget and bid changes stay under human control. Open the paid console to decide.',direct:false,quick:false,label:'Open paid console'});
  }
  return out;
@@ -1264,7 +1294,7 @@ async function qApprove(key){
  S.qIdx=Math.max(0,[...document.querySelectorAll('.q-row')].findIndex(r=>r.dataset.qKey===key));
  await qLeave([key]);
  S.qWin=(S.qWin||0)+1;
- const run=q.kind==='fix'?setFix([q.id],'approved'):q.act==='article'?articleRequest(q.opp.id,'publish'):setDraft(q.id,'approved');
+ const run=isOwner()?(q.kind==='fix'?ownerFix([q.id],'approved'):ownerDraft(q.id,'approved')):q.kind==='fix'?setFix([q.id],'approved'):q.act==='article'?articleRequest(q.opp.id,'publish'):setDraft(q.id,'approved');
  try{await run;}finally{S.qGone.delete(key);if(S.page==='inbox')render();}
 }
 function qLeave(keys){
@@ -1288,7 +1318,7 @@ document.addEventListener('click',e=>{
    if(!qs.length)return;
    qLeave(qs.map(q=>q.key)).then(async()=>{
      S.qWin=(S.qWin||0)+qs.length;
-     try{await setFix(qs.map(q=>q.id),'approved');}
+     try{await (isOwner()?ownerFix(qs.map(q=>q.id),'approved'):setFix(qs.map(q=>q.id),'approved'));}
      finally{qs.forEach(q=>S.qGone.delete(q.key));if(S.page==='inbox')render();}
    });
    return;
@@ -1368,8 +1398,39 @@ function inboxView(s,d) {
  }
  return header+`<div class="review-progress">${selected.count} pending · ${selected.key==='seo'?'Evidence checked before publishing':'Exact-version review'}</div><div class="list">${selected.fixes.slice(0,S.showN).map(fixHTML).join('')}${selected.drafts.slice(0,S.showN).map(draftCard).join('')}</div>`+(selected.changes.length?paidConsole(s,d):'')+moreReview(Math.max(selected.fixes.length,selected.drafts.length))+(selected.count?'':'<section class="r-panel r-empty"><h2>All caught up in this channel.</h2><p>New prepared work will appear here when it needs a decision.</p></section>');
 }
+// ---------- Business owners (self-serve sign-up): approve and publish their own work ----------
+const isOwner=()=>!S.isAdmin&&((S.data[S.siteId]?.role||siteById(S.siteId)?.role)==='owner');
+async function ownerFix(ids,decision){
+ ids.forEach(id=>S.busy.add(id));render();
+ try{
+  const {data,error}=await sb.rpc('owner_decide_fix',{p_site:S.siteId,p_ids:ids,p_decision:decision});if(error)throw error;
+  toast(decision==='approved'?(data?`Publishing ${plural(data,'change')}. Each is checked on your live page; you can roll it back from Website work.`:'Nothing was published: these changes need a fresh evidence review first.'):decision==='rollback_requested'?(data?'Rolling back. Your previous version is being restored.':'That change can no longer be rolled back.'):'Skipped');
+ }catch(e){toast(e.message);}finally{ids.forEach(id=>S.busy.delete(id));await refresh();}
+}
+async function ownerDraft(id,decision){
+ S.busy.add('d:'+id);render();
+ try{const {error}=await sb.rpc('owner_decide_draft',{p_site:S.siteId,p_id:id,p_decision:decision});if(error)throw error;toast(decision==='approved'?'Approved. Your team schedules it for publishing.':decision==='rejected'?'Rejected':'Back in review');}
+ catch(e){toast(e.message);}finally{S.busy.delete('d:'+id);await refresh();}
+}
+function ownerReviewCard(s,d,kind,item){
+ const busy=S.busy.has(item.id)||S.busy.has('d:'+item.id);
+ const actions=kind==='fix'?`<button class="btn primary" data-owner-fix="approved" data-id="${esc(item.id)}" ${busy?'disabled':''}>${busy?'Working…':'Publish this change'}</button><button class="btn" data-owner-fix="rejected" data-id="${esc(item.id)}" ${busy?'disabled':''}>Skip</button><span class="kind">Checked on your live page after publishing. You can roll it back.</span>`
+  :`<button class="btn primary" data-owner-draft="approved" data-id="${esc(item.id)}" ${busy?'disabled':''}>${busy?'Working…':'Approve'}</button><button class="btn" data-owner-draft="rejected" data-id="${esc(item.id)}" ${busy?'disabled':''}>Reject</button>`;
+ return `<article class="card"><div class="card-head"><div><span class="kind">${esc(kind==='draft'?item.kind:FIELD[item.field]||item.field)}</span><h2>${esc(kind==='draft'?item.title:item.page_name||item.url)}</h2></div><span class="status">Needs your decision</span></div>${kind==='fix'?`<div class="row2"><div><b>Current</b><p class="review-copy">${esc(item.before)}</p></div><div><b>Proposed</b><p class="review-copy">${esc(item.after)}</p></div></div>`:`<div class="review-copy">${readableDraft(item.body)}</div>`}${suggestBox(kind,item)}<div class="actions">${actions}</div></article>`;
+}
+function ownerPublished(s,d){
+ const since=Date.now()-30*DAY,rows=(d.fixes||[]).filter(f=>['deployed','rollback_requested'].includes(f.status)&&Date.parse(f.deployed_at||f.decided_at||0)>since).slice(0,30);
+ if(!rows.length)return '';
+ return `<section class="card" style="margin-top:20px"><h3>Recently published</h3><p class="kind">Changes from the last 30 days. Rolling back restores the previous version on your website.</p>${rows.map(f=>`<div class="access-row"><div><b>${esc(FIELD[f.field]||f.field)} · ${esc(f.page_name||f.url)}</b><p class="kind">${f.status==='rollback_requested'?'Rollback in progress':`Published ${esc(fmtTime(f.deployed_at))}${f.verification?.state?` · ${esc(String(f.verification.state).replaceAll('_',' '))}`:''}`}</p></div>${f.status==='deployed'?`<button class="btn" data-owner-fix="rollback_requested" data-id="${esc(f.id)}" ${S.busy.has(f.id)?'disabled':''}>Roll back</button>`:''}</div>`).join('')}</section>`;
+}
+document.addEventListener('click',e=>{
+ const f=e.target.closest?.('[data-owner-fix]'),dr=e.target.closest?.('[data-owner-draft]');
+ if(f&&isOwner()){f.disabled=true;return ownerFix([f.dataset.id],f.dataset.ownerFix);}
+ if(dr&&isOwner()){dr.disabled=true;return ownerDraft(dr.dataset.id,dr.dataset.ownerDraft);}
+});
 function moreReview(total){return total>S.showN?`<div class="more"><button class="btn" data-act="more">Show more prepared work</button></div>`:'';}
 function clientReviewCard(s,d,kind,item){
+ if((d.role||s.role)==='owner')return ownerReviewCard(s,d,kind,item);
  const review=(d.role||s.role)==='reviewer',matching=(d.reviews||[]).find(r=>r.item_kind===kind&&r.item_id===String(item.id)&&Object.entries(clientSnapshot(kind,item)).every(([k,v])=>r.snapshot[k]===v));
  return `<article class="card"><div class="card-head"><div><span class="kind">${esc(kind==='draft'?item.kind:FIELD[item.field]||item.field)}</span><h2>${esc(kind==='draft'?item.title:item.page_name||item.url)}</h2></div><span class="status">${matching?esc(matching.decision.replaceAll('_',' ')):'Needs review'}</span></div>${kind==='fix'?`<div class="row2"><div><b>Current</b><p class="review-copy">${esc(item.before)}</p></div><div><b>Proposed</b><p class="review-copy">${esc(item.after)}</p></div></div>`:`<div class="review-copy">${readableDraft(item.body)}</div>`}${review?suggestBox(kind,item):''}${review?`<details><summary>Record your decision</summary><p>Your review applies to this exact copy. Your agency authorizes publication separately.</p><label class="approval-check"><input type="checkbox" id="client-read-${esc(item.id)}"> I reviewed this complete proposal.</label><div class="actions"><button class="btn primary" data-client-decision="approved" data-kind="${kind}" data-id="${esc(item.id)}">Approve this version</button><button class="btn" data-client-decision="changes_requested" data-kind="${kind}" data-id="${esc(item.id)}">Request changes</button></div></details>`:''}</article>`;
 }
@@ -2564,6 +2625,20 @@ const onboardingCtx={
   return {queries:rows.filter(r=>r.period_end===latest),daily:dl.data||[]};
  },
  finish(sid,prompt){delete S.data[sid];S.siteId=sid;go(`#/w/${encodeURIComponent(sid)}/${prompt?"ask":"today"}`);if(prompt)prefillAsk(prompt);},
+ saveAnswers(sid,patch){const at=new Date().toISOString();return saveSiteProfile(sid,p=>({...p,...(patch.attribution?{attribution:{...patch.attribution,at}}:{}),...(patch.seo_level?{seo_level:patch.seo_level}:{}),...(patch.onboarded?{onboarded_at:at}:{})}));},
+ exitHref:()=>"#/agency",
+};
+// Business owners who signed up themselves: same journey from Search Console on, through owner-scoped endpoints.
+const ownerOnboardingCtx={
+ ...onboardingCtx, owner:true,
+ wordmark:()=>wordmark("#/"),
+ async gscConnector(sid){const {data,error}=await sb.rpc("client_workspace",{p_site:sid});if(error)throw error;return (data?.connectors||[]).find(c=>c.type==="gsc")||null;},
+ async gscProperties(){return [];},
+ async setProperty(){throw Error("Choose the property from Connections.");},
+ syncGoogle:sid=>signupFn("sync_google",{site_id:sid}),
+ searchData:sid=>signupFn("search_summary",{site_id:sid}),
+ saveAnswers:(sid,patch)=>signupFn("profile",{site_id:sid,patch}),
+ exitHref:sid=>`#/w/${encodeURIComponent(sid)}/today`,
 };
 function addSiteView(){
  S.newPlatform="other";

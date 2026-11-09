@@ -77,3 +77,12 @@ body.calm .art-stack i{background:#2a3449;box-shadow:none}body.calm .art-stack i
 body.calm .art-live{background:#0f1726;color:#7bd5bb}
 body.calm .art-btn{background:#fff;color:var(--o-mid)}
 @media(min-width:901px){body.calm .c-stats{grid-template-columns:repeat(3,1fr)}}
+/* Hero sign-up: website box → /signup/?site= */
+.o-start{display:flex;align-items:center;gap:6px;padding:6px;border-radius:999px;background:#ffffff1f;border:1px solid #ffffff38;backdrop-filter:blur(8px);max-width:100%}
+.o-start input{flex:1;min-width:0;width:260px;height:44px;padding:0 18px;border:0;border-radius:999px;background:transparent;color:#fff;font:500 16px Inter,system-ui,sans-serif;outline:none}
+.o-start input::placeholder{color:#ffffffb3}
+.o-start:focus-within{border-color:#fff;box-shadow:0 0 0 3px #ffffff40}
+.o-start .o-btn{height:44px;flex:none}
+.o-alt{color:#ffffffd9;font:500 15px Inter,system-ui,sans-serif;text-decoration:underline;text-underline-offset:3px}
+.sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
+@media (max-width:560px){.o-start{flex-direction:column;border-radius:22px;width:100%}.o-start input{width:100%;text-align:center}.o-start .o-btn{width:100%}}
