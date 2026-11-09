@@ -350,6 +350,8 @@ async function loadResults(id) {
  if(S.session?.user?.id!==identity)return;
  S.results[id]=error?{error:error.message}:data;
 }
+// client_workspace omits drafts.workspace; derive it from the kind so client reviewers still see their drafts.
+const withWorkspace=x=>x.workspace?x:{...x,workspace:DRAFT_KINDS.ads.includes(x.kind)?'ads':DRAFT_KINDS.seo.includes(x.kind)?'seo':DRAFT_KINDS.website.includes(x.kind)?'website':x.workspace};
 const inScopeDraft=x=>['seo','ads','website'].includes(x.workspace)&&['Blog post','FAQ section','Collection page copy','Product description','Content brief','Ad copy','Campaign brief','Offer ideas','Landing page copy','Homepage section','About page'].includes(x.kind);
 async function loadKnowledge(id) {
  S.knowledge||={};
@@ -433,11 +435,11 @@ function aiAnswerBoard(s){
 }
 async function loadSite(id) {
   watchSite(id);
-  const t=window.fbLoad?window.fbLoad(S.isAdmin?22:13):(p)=>p; // real progress for the loading screen: one step per data source
+  const t=window.fbLoad?window.fbLoad(S.isAdmin?23:13):(p)=>p; // real progress for the loading screen: one step per data source
   await Promise.all([loadOperations(id),loadKnowledge(id),loadResults(id),loadOpps(id),loadShop(id),loadMetrics(id),loadSaved(id),loadRuns(id),loadReady(id),loadAiEvidence(id),loadClaims(id),loadTools(id)].map(t));
-  if(!S.isAdmin){const {data,error}=await t(sb.rpc("client_workspace",{p_site:id}));if(error)throw error;S.data[id]={...data,drafts:(data.drafts||[]).filter(inScopeDraft)};return;}
+  if(!S.isAdmin){const {data,error}=await t(sb.rpc("client_workspace",{p_site:id}));if(error)throw error;S.data[id]={...data,drafts:(data.drafts||[]).map(withWorkspace).filter(inScopeDraft)};return;}
   const since = new Date(Date.now() - 200 * 86400_000).toISOString().slice(0, 10);
-  const [fixes, tasks, audits, conns, daily, queries, pages, aeoRuns, aeoPrompts, leads, drafts] = await Promise.all([
+  const [fixes, tasks, audits, conns, daily, queries, pages, aeoRuns, aeoPrompts, leads, drafts, clientReviews] = await Promise.all([
     t(sb.from("fixes").select("id,site_id,url,ref,kind,page_name,field,target,before,restore,after,reasons,status,error,priority,note,decided_at,deployed_at,created_at,source,data").eq("site_id", id).neq("status", "superseded").limit(2000)),
     t(sb.from("tasks").select("*").eq("site_id", id)),
     t(sb.from("audits").select("id,score,prev_score,run_type,page_count,highlights,applied,created_at").eq("site_id", id).order("created_at", { ascending: false })),
@@ -449,6 +451,7 @@ async function loadSite(id) {
     t(sb.from("aeo_prompts").select("*").eq("site_id", id).order("sort_order").order("created_at")),
     t(sb.from("leads").select("*").eq("site_id", id).order("created_at", { ascending: false })),
     t(sb.from("drafts").select("*").eq("site_id", id).order("created_at", { ascending: false })),
+    t(sb.from("client_reviews").select("item_kind,item_id,decision,snapshot,created_at").eq("site_id", id).order("created_at", { ascending: false }).limit(200)),
   ]);
   for (const r of [fixes, tasks, audits, conns, daily, queries, pages]) if (r.error) throw r.error;
   let runs = aeoRuns.error ? [] : aeoRuns.data;
@@ -462,6 +465,8 @@ async function loadSite(id) {
     daily: daily.data, queries: latest(queries.data, "period_end"), pages: latest(pages.data, "period_end"),
     aeoRuns: runs, aeoChecks: checks, aeoPrompts: aeoPrompts.error ? [] : aeoPrompts.data, aeoReady: !aeoRuns.error && !reportError, aeoReportError: reportError,
     leads: leads.error ? [] : leads.data, drafts: drafts.error ? [] : drafts.data.filter(inScopeDraft),
+    // Client decisions shown to the agency. Not stored as d.reviews: that list hides client-approved work from the queue.
+    clientReviews: clientReviews.error ? [] : clientReviews.data,
   };
 }
 const siteById = (id) => S.sites.find((s) => s.id === id);
@@ -483,7 +488,9 @@ function searchReviewHold(f, now=Date.now()) {
 // Suggestions reach the queue through the daily release (up to 10 per business per day), so the list is always today's work.
 const releasedOn = f => f.data?.released_on || '';
 const readyFix = f => f.status==='pending'&&!!releasedOn(f)&&!searchReviewHold(f);
-const isNewToday = f => releasedOn(f) === new Date().toLocaleDateString('en-CA');
+const RELEASE_TZ = 'America/Detroit'; // must match goodbeat_private.release_daily_suggestions
+const releaseDay = (v = Date.now()) => new Date(v).toLocaleDateString('en-CA', { timeZone: RELEASE_TZ });
+const isNewToday = f => releasedOn(f) === releaseDay();
 function pendingDraft(x,d,siteId=S.siteId){
  if(x.status!=='needs_review'||x.ranking_hold)return false;
  const publications=[...(S.workspace[siteId]?.publications||[]),...(S.results[siteId]?.page_publications||[])];
@@ -700,6 +707,7 @@ function pilotPanel(s){
 }
 
 
+function clientDecision(d,kind,item){return (d.clientReviews||[]).find(r=>r.item_kind===kind&&r.item_id===String(item.id)&&Object.entries(clientSnapshot(kind,item)).every(([k,v])=>r.snapshot?.[k]===v))?.decision||null;}
 function clientSnapshot(kind,item){return kind==='fix'?{before:item.before,after:item.after,field:item.field}:{title:item.title,body:item.body};}
 function clientView(s,d){
  const role=d.role||s.role, review=role==='reviewer', rows=S.page==='content'?d.drafts.filter(x=>pendingDraft(x,d)&&(!S.sub||!/^[-0-9a-f]{36}$/i.test(S.sub)||x.id===S.sub)):d.fixes.filter(readyFix);
@@ -1235,7 +1243,7 @@ function queueView(s,d){
  const quick=live.filter(q=>q.quick),chs=[['all','All'],['seo','Google search'],['geo','AI answers'],['content','Content'],['paid','Paid ads']].map(([k,l])=>[k,l,k==='all'?live.length:live.filter(q=>q.ch===k).length]).filter(([k,,n])=>k==='all'||n);
  if(!items.find(q=>q.key===S.qFocus))S.qFocus=items[Math.min(S.qIdx||0,items.length-1)]?.key||null;
  const mins=Math.max(1,Math.round(live.reduce((n,q)=>n+(q.quick?.25:q.kind==='paid'?2:1),0)));
- const head=`<header class="r-header q-head"><div><h1>${live.length?`${plural(live.length,'decision')} waiting`:`You're all caught up`}</h1><p class="muted">${live.length?`${(()=>{const n=live.filter(q=>(q.kind==='fix'&&isNewToday(q.item))||(q.kind==='draft'&&String(q.item.created_at||'').slice(0,10)===new Date().toISOString().slice(0,10))).length;return n?`<b class="q-new">${plural(n,'new suggestion')} today.</b> `:'';})()}About ${plural(mins,'minute')}. Approve, skip or open anything. Review the exact version before approval. Publishing and recovery options depend on the connected platform.`:`Prepared work appears here when it is ready for review. Follow recorded progress in Work history.`}</p></div>${quick.length?(S.qConfirm?`<div class="q-confirm"><span>Publish ${plural(quick.length,'quick win')}? Each is checked on the live page and can be rolled back.</span><button class="btn primary" data-q-quick="yes">Publish ${quick.length}</button><button class="btn ghost" data-q-quick="no">Cancel</button></div>`:`<button class="btn primary" data-q-quick="ask">${icon('check',15)} Approve ${plural(quick.length,'quick win')}</button>`):''}</header>`;
+ const head=`<header class="r-header q-head"><div><h1>${live.length?`${plural(live.length,'decision')} waiting`:`You're all caught up`}</h1><p class="muted">${live.length?`${(()=>{const n=live.filter(q=>(q.kind==='fix'&&isNewToday(q.item))||(q.kind==='draft'&&!!q.item.created_at&&releaseDay(q.item.created_at)===releaseDay())).length;return n?`<b class="q-new">${plural(n,'new suggestion')} today.</b> `:'';})()}About ${plural(mins,'minute')}. Approve, skip or open anything. Review the exact version before approval. Publishing and recovery options depend on the connected platform.`:`Prepared work appears here when it is ready for review. Follow recorded progress in Work history.`}</p></div>${quick.length?(S.qConfirm?`<div class="q-confirm"><span>Publish ${plural(quick.length,'quick win')}? Each is checked on the live page and can be rolled back.</span><button class="btn primary" data-q-quick="yes">Publish ${quick.length}</button><button class="btn ghost" data-q-quick="no">Cancel</button></div>`:`<button class="btn primary" data-q-quick="ask">${icon('check',15)} Approve ${plural(quick.length,'quick win')}</button>`):''}</header>`;
  const today=Math.max(decidedToday(d),S.qWin||0),todo=live.length,pctDone=today+todo?Math.round(today/(today+todo)*100):100;
  const progress=`<div class="q-progress"><div><div class="q-prog-top"><b>${today?`${plural(today,'decision')} cleared today`:'Start clearing today\'s decisions'}</b><span>${todo?`${todo} to go`:'All done'}</span></div><div class="q-prog-bar"><i style="width:${pctDone}%"></i></div></div>${goalCard(s,d,true)}</div>`;
  const tabs=live.length?`<div class="q-bar"><nav class="q-tabs" aria-label="Filter decisions">${chs.map(([k,l,n])=>`<button data-q-filter="${k}" aria-pressed="${f===k}">${esc(l)} <span>${n}</span></button>`).join('')}</nav>${snoozedN?`<button class="btn ghost sm" data-q-unsnooze>${plural(snoozedN,'item')} set aside · show</button>`:''}</div>`:'';
@@ -1245,7 +1253,7 @@ function queueView(s,d){
   const evq=open&&q.opp?.evidence?.prompt&&(S.aiEv?.[s.id]?.prompts||[]).find(p=>p.prompt===q.opp.evidence.prompt);
   const detail=open?`<div class="q-detail">${decisionBrief(s,d,q)}${evq?`<section class="aie-why"><span class="eyebrow">The evidence · “${esc(evq.prompt)}”</span>${aiEvidenceDetail(s,evq,{inline:true})}</section>`:''}${q.kind==='fix'?(S.isAdmin?fixHTML(q.item):clientReviewCard(s,d,'fix',q.item).replace('<details><summary>Record','<details open><summary>Record')):q.kind==='draft'?(S.isAdmin?draftCard(q.item):clientReviewCard(s,d,'draft',q.item).replace('<details><summary>Record','<details open><summary>Record')):''}</div>`:'';
   const primary=q.kind==='paid'?`<a class="btn sm" href="${href('inbox','paid')}">${esc(q.label)}</a>`:q.direct?`<button class="btn primary sm" data-q-approve="${esc(q.key)}" ${busy?'disabled':''}>${busy?'Working…':esc(q.label)}</button>`:`<button class="btn sm" data-q-open="${esc(q.key)}">${open?'Close':esc(S.isAdmin?q.label:'Review')}</button>`;
-  return `<li class="q-row ${on?'on':''} ${open?'open':''}" data-q-key="${esc(q.key)}"><div class="q-line"><button class="q-main" data-q-open="${esc(q.key)}" aria-expanded="${open}"><span class="q-ch q-${esc(q.ch)}">${esc(q.chName)}</span><b>${q.fresh?'<span class="q-fresh">New today</span>':''}${esc(q.title)}</b><span class="q-why">${esc(q.why)}</span><span class="q-moves">Improves: ${q.kind==='fix'?'how this page shows up in Google':q.kind==='paid'?'ad spend efficiency':q.opp?'your chance of being named by AI assistants':'content on your site'}</span></button><div class="q-acts">${primary}${q.kind!=='paid'?`<button class="btn ghost sm" data-q-snooze="${esc(q.key)}" title="Set aside until tomorrow (S)">Not now</button>`:''}</div></div>${detail}</li>`;};
+  return `<li class="q-row ${on?'on':''} ${open?'open':''}" data-q-key="${esc(q.key)}"><div class="q-line"><button class="q-main" data-q-open="${esc(q.key)}" aria-expanded="${open}"><span class="q-ch q-${esc(q.ch)}">${esc(q.chName)}</span><b>${q.fresh?'<span class="q-fresh">New today</span>':''}${(()=>{const c=S.isAdmin&&q.kind!=='paid'?clientDecision(d,q.kind,q.item):null;return c?`<span class="q-client ${c==='approved'?'ok':'changes'}">${c==='approved'?'Client approved':'Client requested changes'}</span>`:'';})()}${esc(q.title)}</b><span class="q-why">${esc(q.why)}</span><span class="q-moves">Improves: ${q.kind==='fix'?'how this page shows up in Google':q.kind==='paid'?'ad spend efficiency':q.opp?'your chance of being named by AI assistants':'content on your site'}</span></button><div class="q-acts">${primary}${q.kind!=='paid'?`<button class="btn ghost sm" data-q-snooze="${esc(q.key)}" title="Set aside until tomorrow (S)">Not now</button>`:''}</div></div>${detail}</li>`;};
  return head+progress+tabs+`<ol class="q-list" aria-label="Decisions">${items.map(row).join('')}</ol><p class="q-keys" aria-hidden="true"><kbd>J</kbd><kbd>K</kbd> move · <kbd>Enter</kbd> open · <kbd>A</kbd> approve · <kbd>S</kbd> not now · <kbd>⌘K</kbd> jump anywhere</p>`;
 }
 async function qApprove(key){
@@ -3161,6 +3169,6 @@ document.addEventListener('submit',async e=>{
 });
 document.addEventListener('click',e=>{const button=e.target.closest('[data-website-open]');if(!button)return;const s=siteById(S.siteId),d=S.data[S.siteId],c=d?.connectors.find(c=>c.id===button.dataset.websiteOpen);if(s&&c)window.ImpacktWebsites.editor({site:s,connector:c,drafts:d.drafts||[],engine});});
 
-})();
-
+// Keep the search pilot form's typed values across re-renders (read back by searchExperimentsView).
 document.addEventListener('input',e=>{if(e.target.closest?.('#search-experiment-form')){S.searchDrafts||={};S.searchDrafts[S.siteId]||={};S.searchDrafts[S.siteId][e.target.name]=e.target.value;}});
+})();

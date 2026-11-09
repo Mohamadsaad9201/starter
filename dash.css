@@ -243,6 +243,8 @@
 :root:has(#root) .dx-shell{padding:0!important;margin:0!important;max-width:none!important;width:100%}
 
 :root:has(#root) .q-fresh{display:inline-flex;align-items:center;height:20px;padding:0 8px;border-radius:6px;font:600 11.5px Geist,Inter,sans-serif;background:var(--dx-up-bg);color:var(--dx-up);margin-right:8px}
+:root:has(#root) .q-client{display:inline-flex;align-items:center;height:20px;padding:0 8px;border-radius:6px;font:600 11.5px Geist,Inter,sans-serif;margin-right:8px;background:var(--dx-up-bg);color:var(--dx-up)}
+:root:has(#root) .q-client.changes{background:var(--dx-down-bg);color:var(--dx-down)}
 :root:has(#root) .q-new{color:var(--dx-up);font-weight:600}
 /* older views: surfaces that were light-only */
 :root[data-theme=dark]:has(#root) :is(.q-row.on,.cq-cell,.opp-why,.draft-body,.studio-nav-item,.aie-side.them,.subtab,.ba,.st-tile,.dp){background:var(--dx-panel2)!important;color:var(--dx-ink)!important;border-color:var(--dx-line2)!important}
