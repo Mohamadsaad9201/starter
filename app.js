@@ -126,7 +126,8 @@ function parseHash() {
     if (ALIAS[pg]) { sub = sub || ALIAS[pg][1] || null; pg = ALIAS[pg][0]; }
     S.page = PAGES[pg] ? pg : (!pg && !S.isAdmin ? "ask" : "today"); S.sub = sub;
   } else if (h[0] === "site" && h[1]) { S.siteId = h[1]; [S.page, S.sub] = legacy[h[2]] || ["today"]; }
-  else if (h[0] === "new-workspace" || h[0] === "add-site") S.page = "new";
+  else if (h[0] === "new-workspace" || h[0] === "onboarding") { S.page = "onboarding"; S.obSite = h[1] || null; }
+  else if (h[0] === "add-site") S.page = "new";
   else if (h[0] === "agency") { S.page = "agency"; S.sub = h[1] === "messages" ? "messages" : null; S.messagePage = Math.max(1,parseInt(h[2],10)||1); }
   else S.page = "today";
   if(S.page==='content'&&previousPage!=='content'){S.contentFilter='review';S.contentFocus=null;}
@@ -533,7 +534,8 @@ async function route() {
   parseHash();
   const nav = (route.n = (route.n || 0) + 1), stale = () => nav !== route.n; // a newer navigation wins; a finished slow load never pulls the user back
   if (!S.session) return;
-  if (S.page === "new" && !S.isAdmin) return go(href("ask"));
+  if ((S.page === "new" || S.page === "onboarding") && !S.isAdmin) return go(S.siteId ? href("ask") : "#/");
+  if (S.page === "onboarding") { window.SamaritanChat?.unmount(); return window.ImpacktOnboarding ? window.ImpacktOnboarding.mount($root, onboardingCtx, S.obSite) : renderShell(addSiteView()); }
   if (S.page === "new") { if (!S.siteId && S.sites[0]) S.siteId = S.sites[0].id; return renderShell(addSiteView()); }
   if (S.page === "agency" || (S.isAdmin && !location.hash.replace(/^#\/?/, ""))) {
     if (!S.isAdmin) return go(href("today"));
@@ -1514,7 +1516,7 @@ function dashView(s, d) {
 function render() {
   // Background loaders call render() when they finish; they must not replace a page the user has since moved to.
   if (S.page === "agency") { renderShell(agencyView()); return; }
-  if (S.page === "new") return;
+  if (S.page === "new" || S.page === "onboarding") return;
   const s = siteById(S.siteId), d = S.data[S.siteId];
   if (!s || !d) return;
   queueMicrotask(mountChat); window.fbSeen?.();
@@ -2509,9 +2511,63 @@ document.addEventListener("click",async e=>{
  if(!data.market)suggestMarket(form);
  form.onsubmit=async ev=>{ev.preventDefault();ev.stopPropagation();const value=marketValues(form),button=form.querySelector(".primary");button.disabled=true;const {error}=await sb.rpc("confirm_intake_profile",{p_site:site,p_input:value,p_revision:data.revision||null});if(error){button.disabled=false;form.querySelector("[role=status]").textContent=error.message;return;}dlg.close();await loadSites();render();toast("Business profile confirmed");};
 });
+// Data access for the guided onboarding (onboarding.js renders; everything that touches Supabase stays here).
+function prefillAsk(prompt){
+ const until=Date.now()+8000;
+ (function tryFill(){const el=document.querySelector("#samaritan-page textarea");if(!el){if(Date.now()<until)setTimeout(tryFill,150);return;}
+  Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype,"value").set.call(el,prompt);el.dispatchEvent(new Event("input",{bubbles:true}));el.focus();el.setSelectionRange(prompt.length,prompt.length);})();
+}
+async function saveSiteProfile(sid,update){
+ const {data,error}=await sb.from("sites").select("profile").eq("id",sid).single();if(error)throw error;
+ const profile=update(data?.profile||{});
+ const {error:e2}=await sb.from("sites").update({profile}).eq("id",sid);if(e2)throw e2;
+ const s=siteById(sid);if(s)s.profile=profile;
+}
+const onboardingCtx={
+ userId:()=>S.session?.user?.id,
+ sites:()=>S.sites,
+ marketDomain,
+ platforms:PLATFORMS,
+ scanner,
+ wordmark:()=>wordmark("#/agency"),
+ async intake(domain){
+  const {data,error}=await sb.functions.invoke("business-intake",{body:{domain,site:null}});
+  if(error){const body=await error.context?.json?.().catch(()=>null);throw Error(body?.error||"Website lookup is unavailable.");}
+  return data||{};
+ },
+ async createSite({domain,name,platform,market}){
+  const pick=k=>String(market?.[k]||"").trim();
+  let sid=domain.replace(/^www\./,"").split(".")[0].toLowerCase().replace(/[^a-z0-9]+/g,"-").slice(0,24)||"site";
+  if(S.sites.some(x=>x.id===sid))sid+="-"+Math.random().toString(36).slice(2,5);
+  const {error}=await sb.from("sites").insert({id:sid,name,domain,platform,mode:"review",brand:{name},profile:{industry:pick("industry"),customers:pick("customers"),market:Object.fromEntries(["description","model","locations","service","shipping","enrollment"].map(k=>[k,pick(k)])),market_revision:crypto.randomUUID(),onboarding:"guided"},sort_order:S.sites.length+1,next_run_at:nextMonday()});
+  if(error)throw Error("Could not create the workspace: "+error.message);
+  await loadSites();
+  engine("checkup",{site_id:sid}).catch(()=>{}); // the durable queue is saved with the business
+  return sid;
+ },
+ saveProfile:saveSiteProfile,
+ async gscConnector(sid){const {data,error}=await sb.from("connectors").select("id,type,config,status,last_error").eq("site_id",sid).eq("type","gsc").order("created_at",{ascending:false}).limit(1);if(error)throw error;return data?.[0]||null;},
+ async connectInfo(){if(!S.connectInfo)await loadConnectInfo();return S.connectInfo;},
+ async gscProperties(cid){return ((await engine("gsc_list",{connector_id:cid})).sites||[]).filter(p=>p.permission!=="siteUnverifiedUser");},
+ async googleAuthUrl(sid,hash){return (await connectFn("start",{provider:"google",site_id:sid,return_to:location.origin+location.pathname+hash})).url;},
+ async setProperty(cid,property){
+  const {data,error}=await sb.from("connectors").select("config").eq("id",cid).single();if(error)throw error;
+  const {error:e2}=await sb.from("connectors").update({config:{...(data?.config||{}),property},last_error:null}).eq("id",cid);if(e2)throw e2;
+  const r=await engine("test",{connector_id:cid});if(!r.ok)throw Error(r.error||"Search Console did not accept this property.");
+ },
+ syncGoogle,
+ async searchData(sid){
+  const since=new Date(Date.now()-92*DAY).toISOString().slice(0,10);
+  const [q,dl]=await Promise.all([sb.from("gsc_queries").select("period_end,query,clicks,impressions,ctr,position").eq("site_id",sid).order("period_end",{ascending:false}).order("impressions",{ascending:false}).limit(250),sb.from("gsc_daily").select("date,clicks,impressions,ctr,position").eq("site_id",sid).gte("date",since).order("date")]);
+  if(q.error)throw q.error;if(dl.error)throw dl.error;
+  const rows=q.data||[],latest=rows[0]?.period_end;
+  return {queries:rows.filter(r=>r.period_end===latest),daily:dl.data||[]};
+ },
+ finish(sid,prompt){delete S.data[sid];S.siteId=sid;go(`#/w/${encodeURIComponent(sid)}/${prompt?"ask":"today"}`);if(prompt)prefillAsk(prompt);},
+};
 function addSiteView(){
  S.newPlatform="other";
- return `${pageHead("Agency workspace","Add a client","Welcome the business to Impackt. Confirm its context, connect the relevant accounts, then work with Samaritan.")}<form class="intake-sheet form" id="site-form"><section class="intake-panel"><h2>Start with their website</h2><div class="intake-url"><label class="field">Public website<input name="domain" id="s-domain" required inputmode="url" placeholder="example.com"></label><button type="button" class="btn" data-market-lookup>Read website</button></div><p class="intake-status" role="status" aria-live="polite">Use the published website your customers visit.</p></section><section class="intake-panel"><h2>Review the business profile</h2><div class="row2"><label class="field">Business name<input id="s-name" name="businessName" required autocomplete="organization"></label><label class="field">Website platform<select id="s-platform">${Object.entries(PLATFORMS).map(([k,v])=>`<option value="${k}" ${k==="other"?"selected":""}>${esc(v.name)}</option>`).join("")}</select></label></div>${marketFields()}</section><footer><button class="btn primary" type="submit">Confirm profile & meet Samaritan</button></footer></form>`;
+ return `${pageHead("Agency workspace","Add a client","Welcome the business to Impackt. Confirm its context, connect the relevant accounts, then work with Samaritan.")}<p class="muted"><a href="#/onboarding">Prefer the guided onboarding with Samaritan →</a></p><form class="intake-sheet form" id="site-form"><section class="intake-panel"><h2>Start with their website</h2><div class="intake-url"><label class="field">Public website<input name="domain" id="s-domain" required inputmode="url" placeholder="example.com"></label><button type="button" class="btn" data-market-lookup>Read website</button></div><p class="intake-status" role="status" aria-live="polite">Use the published website your customers visit.</p></section><section class="intake-panel"><h2>Review the business profile</h2><div class="row2"><label class="field">Business name<input id="s-name" name="businessName" required autocomplete="organization"></label><label class="field">Website platform<select id="s-platform">${Object.entries(PLATFORMS).map(([k,v])=>`<option value="${k}" ${k==="other"?"selected":""}>${esc(v.name)}</option>`).join("")}</select></label></div>${marketFields()}</section><footer><button class="btn primary" type="submit">Confirm profile & meet Samaritan</button></footer></form>`;
 
 }
 

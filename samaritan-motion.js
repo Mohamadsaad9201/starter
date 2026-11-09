@@ -30,8 +30,12 @@
   }), { rootMargin:'40px' });
   function sync() {
     scheduled = false;
+    const seen = new Set();
     document.querySelectorAll('[data-scanner-key]').forEach(host => {
       const key = host.dataset.scannerKey;
+      // One animated host per key. A repeated key used to move the video between hosts on every pass,
+      // and each move re-triggered this observer: an endless loop that froze the tab.
+      if (seen.has(key)) return; seen.add(key);
       let record = records.get(key);
       if (!record) { record = {host:null, video:null, visible:false}; records.set(key, record); }
       if (record.host !== host) {
