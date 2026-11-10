@@ -1,5 +1,6 @@
 import {seoEvidence} from "./seo-evidence.ts";
 import {agentEvidence} from "./agent-evidence.ts";
+import {produce, approve} from "./pipeline.ts";
 const seoBooks = [{"slug":"seo-internal-links","title":"Connect related pages","gets":"A paragraph with relevant internal links, written for a specific page in your inventory.","ask":"Which page or product should we focus on?","skills":["advertools / crawl inventory"],"guidance":"Use the selected source and related destination URLs. Draft a short addition with natural, descriptive Markdown links. Check intent and existing copy. Never assert a link is missing from an excerpt. Do not propose backlinks on external websites.","ws":"seo","kind":"Content brief","goal":"Improve existing search pages"},{"slug":"seo-search-opportunity","title":"Improve a page already appearing in search","gets":"A revised introduction for an existing page with recorded Search Console impressions.","ask":"Which product or theme matters most?","skills":["Google API Python Client / Search Analytics"],"guidance":"Use the matched page and its exact reporting period. Draft an introduction that serves the existing page intent. Site-level queries are context only. Do not attribute a query to this URL, predict uplift or request a title change on length alone.","ws":"seo","kind":"Content brief","goal":"Improve existing search pages"},{"slug":"seo-content-overlap","title":"Give similar pages distinct purposes","gets":"A proposed revision for one of two pages that cover similar ground.","ask":"Which topic or page should we compare?","skills":["Sentence Transformers / semantic retrieval"],"guidance":"Inspect the two excerpts and their customer tasks. Similarity is a retrieval signal. Different locations, product variants and buying versus learning intent can justify separate pages. Draft differentiated copy only for a defensible distinction. Keep both URLs intact.","ws":"seo","kind":"Content brief","goal":"Improve existing search pages"}];
 // Playbooks: proven marketing frameworks (adapted from marketingskills by Corey Haines, MIT) filled in with the
 // business's own verified data, written by the engine's writer (business rules, excluded phrases, scope) and
@@ -33,8 +34,9 @@ async function library(origin?: string) {
 }
 const newer = (a: unknown, b: unknown) => { const x = String(a || "0").split(".").map(Number), y = String(b || "0").split(".").map(Number); for (let i = 0; i < 3; i++) { if ((x[i] || 0) !== (y[i] || 0)) return (x[i] || 0) > (y[i] || 0); } return false; };
 async function engineKey() { const { data } = await db.rpc("get_engine_key"); return String(data || ""); }
-async function engine(body: Record<string, unknown>) {
-  const r = await fetch(`${URL_}/functions/v1/engine`, { method: "POST", headers: { "Content-Type": "application/json", "x-engine-key": await engineKey() }, body: JSON.stringify(body), signal: AbortSignal.timeout(170000) });
+async function engine(body: Record<string, unknown>, authorization?: string) {
+  // The engine key authorizes the call; a forwarded user token only tells the engine who approved.
+  const r = await fetch(`${URL_}/functions/v1/engine`, { method: "POST", headers: { "Content-Type": "application/json", "x-engine-key": await engineKey(), ...(authorization ? { Authorization: authorization } : {}) }, body: JSON.stringify(body), signal: AbortSignal.timeout(170000) });
   const j = await r.json().catch(() => ({}));
   if (!r.ok || j.error) throw new Error(j.error || `Engine returned ${r.status}`);
   return j;
@@ -105,7 +107,8 @@ PLAYBOOK GUIDANCE (apply the frameworks that fit this business; skip anything th
 ${pb.guidance}
 MEASUREMENT: end with a short MEASUREMENT section: the one metric this work should move, its baseline from the data above (or "no baseline yet" and how to get one), and when to check it (28 days after it goes live).`;
     const limit = agent ? 12000 : 9000; // skill guidance is condensed to ~4.5k; the rest is the business's own data
-    const title = `${pb.title}${note ? ": " + clean(note).slice(0, 80) : ""}`;
+    // A publishable article takes its title from its own headline; the playbook label is an internal name.
+    const title = pb.kind === "Blog post" ? "" : `${pb.title}${note ? ": " + clean(note).slice(0, 80) : ""}`;
     let r: any;
     try { r = await engine({ action: "draft", site_id: site.id, workspace: pb.ws, kind: pb.kind, title: title.slice(0, 140), brief: brief.slice(0, limit) }); }
     catch (e) {
@@ -121,7 +124,8 @@ MEASUREMENT: end with a short MEASUREMENT section: the one metric this work shou
 // ---------- Autopilot: prepare evidence-backed work every day, measure what gets approved ----------
 // Each playbook runs on its own cadence when the business has the evidence it needs. Inputs a person would type
 // (the page, question or location) are filled from that evidence. Nothing publishes: every result is a draft in the
-// review queue. Situational playbooks (apps, paywalls, outbound, partnerships…) stay on demand.
+// review queue. Situational playbooks (apps, paywalls, outbound, partnerships…) stay on demand; email, SMS and
+// social playbooks are outside the product's scope and never run automatically.
 type Plan = { every: number; needs?: string[]; note?: "question" | "page" | "location" };
 const PLAN: Record<string, Plan> = {
   "seo-agent-strategy": { every: 30, needs: ["pages"] }, "seo-agent-keywords": { every: 21, needs: ["pages"] },
@@ -140,8 +144,8 @@ const PLAN: Record<string, Plan> = {
   "landing-page": { every: 45 }, "homepage-refresh": { every: 60 }, "about-page": { every: 90 }, "comparison-page": { every: 45, needs: ["aeo"] },
   "seo-audit": { every: 14, needs: ["pages"] }, "schema": { every: 30, needs: ["pages"] }, "site-architecture": { every: 60, needs: ["pages"] },
   "link-building": { every: 30 }, "directory-submissions": { every: 60 }, "popups": { every: 45 }, "lead-magnets": { every: 45 },
-  "pricing": { every: 60, needs: ["shop"] }, "emails": { every: 30 }, "sms": { every: 45, needs: ["shop"] }, "churn-prevention": { every: 45, needs: ["shop"] },
-  "social": { every: 7 }, "referrals": { every: 60 }, "product-marketing": { every: 90 }, "competitor-profiling": { every: 30, needs: ["aeo"] },
+  "pricing": { every: 60, needs: ["shop"] }, "churn-prevention": { every: 45, needs: ["shop"] },
+  "referrals": { every: 60 }, "product-marketing": { every: 90 }, "competitor-profiling": { every: 30, needs: ["aeo"] },
   "marketing-loops": { every: 90 }, "analytics": { every: 90 }, "conversion-tracking": { every: 60, needs: ["ads"] }, "attribution": { every: 60, needs: ["ads"] },
 };
 // tickBudget: Supabase rate-limits how many function calls one request may fan out (~15), so each tick dispatches at
@@ -198,7 +202,9 @@ async function autopilot() {
     const autoToday = autoCount(site.id);
     const draftIds = (runs || []).filter((r: any) => r.auto && r.draft_id).map((r: any) => r.draft_id);
     const { data: waiting } = draftIds.length ? await db.from("drafts").select("id").in("id", draftIds.slice(0, 500)).eq("status", "needs_review") : { data: [] };
-    const pendingIds = new Set((waiting || []).map((d: any) => String(d.id)));
+    const { data: settled } = waiting?.length ? await db.from("draft_pipeline").select("draft_id").in("draft_id", waiting.map((d: any) => d.id)).eq("stage", "delivered") : { data: [] };
+    const done = new Set((settled || []).map((x: any) => String(x.draft_id)));
+    const pendingIds = new Set((waiting || []).map((d: any) => String(d.id)).filter((id: string) => !done.has(id)));
     if (autoToday >= cap) { report.push({ site: site.id, skipped: `daily cap ${cap} reached` }); continue; }
     if (pendingIds.size >= AUTO.pendingLimit) { report.push({ site: site.id, skipped: `${pendingIds.size} drafts waiting for review` }); continue; }
     const ev = await evidence(site);
@@ -290,6 +296,17 @@ Deno.serve(async (req) => {
     if (body.action === "autopilot") {
       if (uid !== null) return json({ error: "Engine key required" }, 401);
       return json(await autopilot());
+    }
+    if (body.action === "produce") {
+      if (uid !== null) return json({ error: "Engine key required" }, 401);
+      return json({ ok: true, ...(await produce(db, (b) => engine(b), body.site_id)) });
+    }
+    if (body.action === "approve") {
+      if (!uid) return json({ error: "Sign in to approve work." }, 401);
+      const auth = req.headers.get("authorization") ?? "";
+      const user = createClient(URL_, ANON, { global: { headers: { Authorization: auth } }, auth: { persistSession: false } });
+      const { data: role } = await user.rpc("my_workspace_role", { p_site: body.site_id });
+      return json(await approve(db, body, { id: uid, role: String(role) }, (b, asUser) => engine(b, asUser ? auth : undefined)));
     }
     if (body.action === "run") {
       const pb = seoBooks.find(p=>p.slug===body.slug) || ((await library()).playbooks || []).find((p: any) => p.slug === body.slug); // the library includes the 12 SEO specialists

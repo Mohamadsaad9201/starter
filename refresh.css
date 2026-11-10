@@ -593,3 +593,10 @@ kbd{border-radius:6px!important;font-family:var(--body)!important}
  .workspace-rail a,.rail-channels summary{min-height:44px}
 }
 @media(min-width:1200px){.home-performance.has-trend{grid-template-columns:minmax(0,1.55fr) minmax(295px,1fr)}.home-performance.has-trend .gl-grid{grid-template-columns:1fr 1fr;gap:18px}.home-performance.has-trend .h-card-head{margin-bottom:14px}}
+
+/* Production pipeline: where briefs are finished into publishable work, and why some cannot be yet. */
+.pipeline-note{flex-basis:100%;margin:8px 0 4px;padding:8px 12px;border-radius:10px;background:var(--bg);border:1px solid var(--line);font-size:13px;line-height:1.5}
+.production-panel{margin-top:18px}
+.production-panel summary{cursor:pointer;font-size:14px}
+.production-reason{padding:10px 0;border-top:1px solid var(--line);font-size:13.5px;line-height:1.5}
+.production-reason .kind{margin-top:2px}

@@ -1,0 +1,55 @@
+// Canonical safe Markdown subset for both the draft preview and published HTML.
+// scripts/build-article-format.py produces the browser copy from this file.
+export function safeArticleUrl(value) {
+  try {
+    if (typeof value !== 'string' || /[\s<>"'`\\\u0000-\u001f]/.test(value)) return null;
+    const u = new URL(value);
+    const host = u.hostname.toLowerCase().replace(/\.$/, '');
+    if (!['https:', 'http:'].includes(u.protocol) || u.username || u.password || u.port) return null;
+    if (!host.includes('.') || /(^|\.)(localhost|local|internal|test|invalid|example|onion)$/.test(host) || /^[\d.]+$/.test(host) || host.includes(':')) return null;
+    if (/^\/(?:cart|checkout|account)(?:\/|$)/i.test(u.pathname)) return null;
+    return u.href.replace(/\(/g, '%28').replace(/\)/g, '%29');
+  } catch { return null; }
+}
+export function articleLinks(text) {
+  const value=String(text || ''),links=[],pattern=/\[([^\]\n]{1,240})\]\(/g;
+  let match;
+  while((match=pattern.exec(value))) {
+    const start=pattern.lastIndex;let cursor=start,depth=1;
+    // Balanced parentheses preserve legitimate research URLs and detect unsafe schemes intact.
+    for(;cursor<value.length&&value[cursor]!=='\n';cursor++) {
+      if(value[cursor]==='(')depth++;
+      if(value[cursor]===')'&&--depth===0)break;
+    }
+    if(depth!==0)continue;
+    const target=value.slice(start,cursor);
+    links.push({label:match[1],target,url:safeArticleUrl(target),start:match.index,end:cursor+1});
+    pattern.lastIndex=cursor+1;
+  }
+  return links;
+}
+function escapeArticle(text) { return String(text).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+function articleInline(text) {
+  let html='', cursor=0;
+  for (const link of articleLinks(text)) {
+    html+=escapeArticle(text.slice(cursor,link.start));
+    html+=link.url ? `<a href="${escapeArticle(link.url)}" target="_blank" rel="noopener noreferrer">${escapeArticle(link.label)}</a>` : escapeArticle(link.label);
+    cursor=link.end;
+  }
+  return html+escapeArticle(text.slice(cursor));
+}
+export function renderArticleHtml(text) {
+  const output=[];let paragraph=[],list=[],listType='';
+  const flushParagraph=()=>{if(paragraph.length){output.push(`<p>${paragraph.map(articleInline).join('<br>')}</p>`);paragraph=[];}};
+  const flushList=()=>{if(list.length){output.push(`<${listType}>${list.map(x=>`<li>${articleInline(x)}</li>`).join('')}</${listType}>`);list=[];listType='';}};
+  for (const line of String(text || '').replace(/\r\n?/g,'\n').split('\n')) {
+    const heading=line.match(/^(#{1,3})\s+(.+)$/),item=line.match(/^\s*(?:([-*])|\d+[.)])\s+(.+)$/);
+    if(!line.trim()){flushParagraph();flushList();continue;}
+    if(heading){flushParagraph();flushList();const level=heading[1].length+1;output.push(`<h${level}>${articleInline(heading[2])}</h${level}>`);continue;}
+    if(item){flushParagraph();const type=item[1]?'ul':'ol';if(listType&&type!==listType)flushList();listType=type;list.push(item[2]);continue;}
+    flushList();paragraph.push(line);
+  }
+  flushParagraph();flushList();return output.join('\n');
+}
+
+

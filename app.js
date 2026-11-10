@@ -353,6 +353,9 @@ async function loadResults(id) {
 }
 // client_workspace omits drafts.workspace; derive it from the kind so client reviewers still see their drafts.
 const withWorkspace=x=>x.workspace?x:{...x,workspace:DRAFT_KINDS.ads.includes(x.kind)?'ads':DRAFT_KINDS.seo.includes(x.kind)?'seo':DRAFT_KINDS.website.includes(x.kind)?'website':x.workspace};
+// Gate fields carried on each draft: lane (approval | production | attention | closed), readiness and production stage.
+const GATE_FIELDS=['lane','ready','adapter','payload_hash','reasons','stage','blocker','prepared_by','checked_at','source_draft_id','deliverable_id'];
+const withGate=(x,g)=>g?{...x,...Object.fromEntries(GATE_FIELDS.map(k=>[k,g[k]])),gate_at:g.updated_at}:x;
 const inScopeDraft=x=>['seo','ads','website'].includes(x.workspace)&&['Blog post','FAQ section','Collection page copy','Product description','Content brief','Email campaign','Social posts','Ad copy','Campaign brief','Offer ideas','Landing page copy','Homepage section','About page'].includes(x.kind);
 async function loadKnowledge(id) {
  S.knowledge||={};
@@ -378,7 +381,7 @@ function knowledgePanel(s) {
 // ---------- Freshness: realtime invalidation + revalidate on focus ----------
 // The database sends a tiny "this business changed" signal (Supabase Realtime); the app then re-fetches through its
 // normal loaders. Debounced and single-flight, so a burst of background writes causes one refresh, never a stampede.
-const LIVE_TABLES = ["opportunities", "drafts", "fixes", "tasks", "page_content_publications", "operation_jobs", "analytics_sync", "connectors", "playbook_runs", "site_checks"];
+const LIVE_TABLES = ["opportunities", "drafts", "draft_pipeline", "fixes", "tasks", "page_content_publications", "operation_jobs", "analytics_sync", "connectors", "playbook_runs", "site_checks"];
 let liveCh = null, liveSite = null, liveTimer = null, liveBusy = false, livePending = false, lastRevalidate = 0;
 const userBusy = () => { const a = document.activeElement; return !!S.modal || !!(a && ["INPUT", "TEXTAREA", "SELECT"].includes(a.tagName)); };
 function scheduleLive(sid, ms = 1500) { clearTimeout(liveTimer); liveTimer = setTimeout(() => liveRefresh(sid), ms); }
@@ -454,6 +457,9 @@ async function loadSite(id) {
     t(sb.from("drafts").select("*").eq("site_id", id).order("created_at", { ascending: false })),
     t(sb.from("client_reviews").select("item_kind,item_id,decision,snapshot,created_at").eq("site_id", id).order("created_at", { ascending: false }).limit(200)),
   ]);
+  // The readiness gate's verdict per draft and the shared work counts: the same records every surface reads.
+  const [pipeline, work] = await Promise.all([t(sb.from("draft_pipeline").select("*").eq("site_id", id).limit(5000)), t(sb.rpc("work_status", { p_site: id }))]);
+  const gate = new Map((pipeline.data || []).map((g) => [g.draft_id, g]));
   for (const r of [fixes, tasks, audits, conns, daily, queries, pages]) if (r.error) throw r.error;
   let runs = aeoRuns.error ? [] : aeoRuns.data;
   let reportError=null;
@@ -465,7 +471,8 @@ async function loadSite(id) {
     fixes: fixes.data, tasks: tasks.data, audits: audits.data, connectors: conns.data,
     daily: daily.data, queries: latest(queries.data, "period_end"), pages: latest(pages.data, "period_end"),
     aeoRuns: runs, aeoChecks: checks, aeoPrompts: aeoPrompts.error ? [] : aeoPrompts.data, aeoReady: !aeoRuns.error && !reportError, aeoReportError: reportError,
-    leads: leads.error ? [] : leads.data, drafts: drafts.error ? [] : drafts.data.filter(inScopeDraft),
+    leads: leads.error ? [] : leads.data, drafts: drafts.error ? [] : drafts.data.filter(inScopeDraft).map((x) => withGate(x, gate.get(x.id))),
+    work: work.error ? null : work.data, pipelineError: pipeline.error ? pipeline.error.message : null,
     // Client decisions shown to the agency. Not stored as d.reviews: that list hides client-approved work from the queue.
     clientReviews: clientReviews.error ? [] : clientReviews.data,
   };
@@ -494,7 +501,9 @@ const releaseDay = (v = Date.now()) => new Date(v).toLocaleDateString('en-CA', {
 const isNewToday = f => releasedOn(f) === releaseDay();
 function pendingDraft(x,d,siteId=S.siteId){
  if(x.status!=='needs_review'||x.ranking_hold)return false;
- const publications=[...(S.workspace[siteId]?.publications||[]),...(S.results[siteId]?.page_publications||[])];
+ // The approval queue holds only work the server's readiness gate passed: complete, validated and publishable.
+ if(x.lane!=='approval')return false;
+ const publications=[...(S.workspace[siteId]?.publications||[]),...(S.results[siteId]?.page_publications||[]),...(d?.publications||[])];
  if(publications.some(p=>p.draft_id===x.id&&['approved','publishing','applying','published','uncertain','reverted'].includes(p.status)))return false;
  return !(d.reviews||[]).some(r=>r.item_kind==='draft'&&r.item_id===String(x.id)&&r.decision==='approved'&&Object.entries(clientSnapshot('draft',x)).every(([k,v])=>r.snapshot?.[k]===v));
 }
@@ -744,7 +753,7 @@ function clientView(s,d){
  if(S.page==='team')return teamView(s,d);
  if(S.page==='geo')return pageHead('AI search','GEO / AEO','Recorded evidence becomes reviewed content, not a client to-do list.')+channelSignal(s,d,'visibility')+aiAnswerBoard(s)+visibilityPlan(s,d);
  
- if(S.page==='paid')return pageHead('Lead generation','Account performance','Reported campaign metrics and the change journal.')+channelSignal(s,d,'ads')+paidConsole(s,d)+channelPriorities('Campaign work to review',(d.drafts||[]).filter(x=>(x.workspace==='ads'||['Ad copy','Campaign brief','Offer ideas'].includes(x.kind))&&x.status==='needs_review').map(x=>({title:x.title,detail:x.kind,page:'content',action:'Read draft'})),'No campaign drafts awaiting review.');
+ if(S.page==='paid')return pageHead('Lead generation','Account performance','Reported campaign metrics and the change journal.')+channelSignal(s,d,'ads')+paidConsole(s,d)+channelPriorities('Campaign work in production',(d.drafts||[]).filter(x=>(x.workspace==='ads'||['Ad copy','Campaign brief','Offer ideas'].includes(x.kind))&&x.status==='needs_review').map(x=>({title:x.title,detail:x.kind,page:'content',action:'Read draft'})),'No campaign drafts awaiting review.');
  if(['seo','geo'].includes(S.page))return clientChannelOverview(s,d,S.page);
  if(S.page==='connections')return `${pageHead('Your business context','Connect your accounts','Connect the tools relevant to your business. Your team can help with access or setup.')}<div class="actions"><a class="btn primary" href="${href('ask')}">Continue to Samaritan →</a><a class="btn" href="${href('team')}">Ask your team for help</a></div>${setupBar(s,d)}<details class="card"><summary>Connection details</summary><div class="list">${d.connectors.map(c=>`<div class="card"><b>${esc(CONNECTOR_TYPES[c.type]?.name||c.type)}</b><p>${esc(c.status)} · ${esc(fmtTime(c.last_checked_at))}</p></div>`).join('')||'<p>No connections recorded.</p>'}</div></details>${nangoSection(s)}`;
  if(S.page==='growth')return growthView(s,d);
@@ -752,11 +761,11 @@ function clientView(s,d){
  if(S.page==='playbooks')return playbooksView(s,d);
  if(!['fixes','content'].includes(S.page))return homeView(s,d);
  const owner=role==='owner';
- return `${pageHead('Review workspace',kind==='draft'?'Content to review':'Website improvements',owner?'Approve a change to publish it on your website. Every change is checked on the live page and can be rolled back.':review?'Review the complete proposal, then approve it or request changes. Approval does not publish.':'Read-only access to proposed work.')}<div class="list">${rows.slice(0,100).map(item=>{
+ return `${pageHead('Review workspace',kind==='draft'?'Content to review':'Website improvements',owner?'Approve a change to publish it on your website. Every change is checked on the live page and can be rolled back.':review?(kind==='draft'?'Read the finished work, then approve it or request changes. Approving publishes this exact version and we check the live page.':'Review the complete proposal, then approve it or request changes. Your agency publishes approved website changes.'):'Read-only access to proposed work.')}<div class="list">${rows.slice(0,100).map(item=>{
  if(owner)return ownerReviewCard(s,d,kind,item);
  // JSONB key order differs from browser insertion order; compare fields, not serialization.
  const matching=d.reviews.find(r=>r.item_kind===kind&&r.item_id===String(item.id)&&Object.entries(clientSnapshot(kind,item)).every(([k,v])=>r.snapshot[k]===v));
- return `<article class="card"><div class="card-head"><h3>${esc(kind==='draft'?item.title:item.page_name||item.url)}</h3><span class="client-role">${matching?esc(matching.decision.replaceAll('_',' ')):'Needs review'}</span></div>${kind==='fix'?`<p class="kind">${esc(FIELD[item.field]||item.field)}</p><div class="row2"><div><b>Current</b><p class="review-copy">${esc(item.before)}</p></div><div><b>Proposed</b><p class="review-copy">${esc(item.after)}</p></div></div>`:`<div class="review-copy">${readableDraft(item.body)}</div>${item.kind==='Blog post'?articleLinkReview(item.body):''}`}${review?suggestBox(kind,item):knowledgeCorrectionForm(kind,item.id)}${review?`<details><summary>Record your decision</summary><p>This records your review of this exact version. The agency must still approve execution.</p><label class="approval-check"><input type="checkbox" id="client-read-${esc(item.id)}"> I have read this complete proposal.</label><div class="actions"><button class="btn primary" data-client-decision="approved" data-kind="${kind}" data-id="${esc(item.id)}">Approve this version</button><button class="btn" data-client-decision="changes_requested" data-kind="${kind}" data-id="${esc(item.id)}">Request changes</button></div></details>`:''}</article>`;}).join('')||'<div class="empty">No items awaiting review. Your agency will prepare the next steps.</div>'}</div>${owner&&kind==='fix'?ownerPublished(s,d):''}`;
+ return `<article class="card"><div class="card-head"><h3>${esc(kind==='draft'?item.title:item.page_name||item.url)}</h3><span class="client-role">${matching?esc(matching.decision.replaceAll('_',' ')):'Needs review'}</span></div>${kind==='fix'?`<p class="kind">${esc(FIELD[item.field]||item.field)}</p><div class="row2"><div><b>Current</b><p class="review-copy">${esc(item.before)}</p></div><div><b>Proposed</b><p class="review-copy">${esc(item.after)}</p></div></div>`:`<div class="review-copy">${readableDraft(item.body)}</div>${item.kind==='Blog post'?articleLinkReview(item.body):''}`}${review?suggestBox(kind,item):knowledgeCorrectionForm(kind,item.id)}${review&&kind==='draft'?`${pipelineNote(item,d)}<div class="actions"><button class="btn primary" data-approve-work="${esc(item.id)}" ${S.busy.has('d:'+item.id)?'disabled':''}>${S.busy.has('d:'+item.id)?'Publishing…':'Approve &amp; publish'}</button><button class="btn" data-client-decision="changes_requested" data-kind="draft" data-id="${esc(item.id)}">Request changes</button></div>`:review?`<details><summary>Record your decision</summary><p>This records your review of this exact version. The agency must still approve execution.</p><label class="approval-check"><input type="checkbox" id="client-read-${esc(item.id)}"> I have read this complete proposal.</label><div class="actions"><button class="btn primary" data-client-decision="approved" data-kind="${kind}" data-id="${esc(item.id)}">Approve this version</button><button class="btn" data-client-decision="changes_requested" data-kind="${kind}" data-id="${esc(item.id)}">Request changes</button></div></details>`:''}</article>`;}).join('')||'<div class="empty">No items awaiting review. Your agency will prepare the next steps.</div>'}</div>${owner&&kind==='fix'?ownerPublished(s,d):''}`;
 }
 function accessView(s){
  if(!S.isAdmin)return '<div class="empty">Agency access required.</div>';
@@ -1251,7 +1260,7 @@ function queueAll(s,d){
   for(const f of g.fixes){const exp=!!f.data?.experiment_id;out.push({key:'fix:'+f.id,kind:'fix',id:f.id,ch:g.key,chName:g.name,item:f,
    title:`${FIELD[f.field]||f.field} · ${f.page_name||f.url||'page'}`,why:f.before?`Now: “${qClip(f.before,70)}” → “${qClip(f.after,90)}”`:`Adds: “${qClip(f.after,140)}”`,
    direct:(S.isAdmin||isOwner())&&!exp,quick:(S.isAdmin||isOwner())&&!exp,label:'Publish',note:'Single change, checked on the live page, one-click rollback.'});}
-  for(const x of g.drafts){const o=oppFor(x.id);let direct=S.isAdmin||isOwner(),label='Approve',act='draft';
+  for(const x of g.drafts){const o=oppFor(x.id);let direct=S.isAdmin||isOwner(),label='Approve & publish',act='draft';
    if(o&&o.publishable&&o.target_kind==='article'){act='article';label='Add to article';}
    else if(o&&o.publishable){direct=false;label='Review publication';}
    else if(o&&!o.publishable){direct=false;label='Review & copy';}
@@ -1409,7 +1418,7 @@ function commandHero(s,d){
 function inboxView(s,d) {
  S.filter.status='pending';const groups=reviewGroups(s,d),total=groups.reduce((n,g)=>n+g.count,0),selected=groups.find(g=>g.key===S.sub);
  const header=`<header class="r-header"><div><p class="eyebrow">Your decision desk</p><h1>${selected?selected.name+' to review':'A clear next decision.'}</h1><p class="muted">${selected?'Review the prepared work. Approve this version or suggest a change.':`${total} pending decisions, organized by channel. Your team handles the preparation.`}</p></div>${selected?`<a class="btn" href="${href('inbox')}">← All channels</a>`:''}</header>`;
- if(!selected)return queueView(s,d);
+ if(!selected)return queueView(s,d)+productionPanel(d);
  if(false)return header+reviewCards(s,d)+`<section class="review-reassurance"><span>${icon('shield',22)}</span><div><h2>Your approval has a boundary.</h2><p>Content and website changes are reviewed before publication. Ad spend remains under human control. Research and connection issues stay with your agency.</p><a href="${href('team')}">See what your team is doing →</a></div></section>`;
  if(!S.isAdmin){
   const items=selected.fixes.map(item=>({kind:'fix',item})).concat(selected.drafts.map(item=>({kind:'draft',item})));
@@ -1427,6 +1436,7 @@ async function ownerFix(ids,decision){
  }catch(e){toast(e.message);}finally{ids.forEach(id=>S.busy.delete(id));await refresh();}
 }
 async function ownerDraft(id,decision){
+ if(decision==='approved')return approveWork(id);
  S.busy.add('d:'+id);render();
  try{const {error}=await sb.rpc('owner_decide_draft',{p_site:S.siteId,p_id:id,p_decision:decision});if(error)throw error;toast(decision==='approved'?'Approved. Your team schedules it for publishing.':decision==='rejected'?'Rejected':'Back in review');}
  catch(e){toast(e.message);}finally{S.busy.delete('d:'+id);await refresh();}
@@ -1434,8 +1444,8 @@ async function ownerDraft(id,decision){
 function ownerReviewCard(s,d,kind,item){
  const busy=S.busy.has(item.id)||S.busy.has('d:'+item.id);
  const actions=kind==='fix'?`<button class="btn primary" data-owner-fix="approved" data-id="${esc(item.id)}" ${busy?'disabled':''}>${busy?'Working…':'Publish this change'}</button><button class="btn" data-owner-fix="rejected" data-id="${esc(item.id)}" ${busy?'disabled':''}>Skip</button><span class="kind">Checked on your live page after publishing. You can roll it back.</span>`
-  :`<button class="btn primary" data-owner-draft="approved" data-id="${esc(item.id)}" ${busy?'disabled':''}>${busy?'Working…':'Approve'}</button><button class="btn" data-owner-draft="rejected" data-id="${esc(item.id)}" ${busy?'disabled':''}>Reject</button>`;
- return `<article class="card"><div class="card-head"><div><span class="kind">${esc(kind==='draft'?item.kind:FIELD[item.field]||item.field)}</span><h2>${esc(kind==='draft'?item.title:item.page_name||item.url)}</h2></div><span class="status">Needs your decision</span></div>${kind==='fix'?`<div class="row2"><div><b>Current</b><p class="review-copy">${esc(item.before)}</p></div><div><b>Proposed</b><p class="review-copy">${esc(item.after)}</p></div></div>`:`<div class="review-copy">${readableDraft(item.body)}</div>`}${suggestBox(kind,item)}<div class="actions">${actions}</div></article>`;
+  :`<button class="btn primary" data-owner-draft="approved" data-id="${esc(item.id)}" ${busy?'disabled':''}>${busy?'Publishing…':'Approve &amp; publish'}</button><button class="btn" data-owner-draft="rejected" data-id="${esc(item.id)}" ${busy?'disabled':''}>Reject</button>`;
+ return `<article class="card"><div class="card-head"><div><span class="kind">${esc(kind==='draft'?item.kind:FIELD[item.field]||item.field)}</span><h2>${esc(kind==='draft'?item.title:item.page_name||item.url)}</h2></div><span class="status">Needs your decision</span></div>${kind==='fix'?`<div class="row2"><div><b>Current</b><p class="review-copy">${esc(item.before)}</p></div><div><b>Proposed</b><p class="review-copy">${esc(item.after)}</p></div></div>`:`<div class="review-copy">${readableDraft(item.body)}</div>${pipelineNote(item,d)}`}${suggestBox(kind,item)}<div class="actions">${actions}</div></article>`;
 }
 function ownerPublished(s,d){
  const since=Date.now()-30*DAY,rows=(d.fixes||[]).filter(f=>['deployed','rollback_requested'].includes(f.status)&&Date.parse(f.deployed_at||f.decided_at||0)>since).slice(0,30);
@@ -1451,7 +1461,7 @@ function moreReview(total){return total>S.showN?`<div class="more"><button class
 function clientReviewCard(s,d,kind,item){
  if((d.role||s.role)==='owner')return ownerReviewCard(s,d,kind,item);
  const review=(d.role||s.role)==='reviewer',matching=(d.reviews||[]).find(r=>r.item_kind===kind&&r.item_id===String(item.id)&&Object.entries(clientSnapshot(kind,item)).every(([k,v])=>r.snapshot[k]===v));
- return `<article class="card"><div class="card-head"><div><span class="kind">${esc(kind==='draft'?item.kind:FIELD[item.field]||item.field)}</span><h2>${esc(kind==='draft'?item.title:item.page_name||item.url)}</h2></div><span class="status">${matching?esc(matching.decision.replaceAll('_',' ')):'Needs review'}</span></div>${kind==='fix'?`<div class="row2"><div><b>Current</b><p class="review-copy">${esc(item.before)}</p></div><div><b>Proposed</b><p class="review-copy">${esc(item.after)}</p></div></div>`:`<div class="review-copy">${readableDraft(item.body)}</div>`}${review?suggestBox(kind,item):''}${review?`<details><summary>Record your decision</summary><p>Your review applies to this exact copy. Your agency authorizes publication separately.</p><label class="approval-check"><input type="checkbox" id="client-read-${esc(item.id)}"> I reviewed this complete proposal.</label><div class="actions"><button class="btn primary" data-client-decision="approved" data-kind="${kind}" data-id="${esc(item.id)}">Approve this version</button><button class="btn" data-client-decision="changes_requested" data-kind="${kind}" data-id="${esc(item.id)}">Request changes</button></div></details>`:''}</article>`;
+ return `<article class="card"><div class="card-head"><div><span class="kind">${esc(kind==='draft'?item.kind:FIELD[item.field]||item.field)}</span><h2>${esc(kind==='draft'?item.title:item.page_name||item.url)}</h2></div><span class="status">${matching?esc(matching.decision.replaceAll('_',' ')):'Needs review'}</span></div>${kind==='fix'?`<div class="row2"><div><b>Current</b><p class="review-copy">${esc(item.before)}</p></div><div><b>Proposed</b><p class="review-copy">${esc(item.after)}</p></div></div>`:`<div class="review-copy">${readableDraft(item.body)}</div>`}${review?suggestBox(kind,item):''}${review&&kind==='draft'?`${pipelineNote(item,d)}<div class="actions"><button class="btn primary" data-approve-work="${esc(item.id)}" ${S.busy.has('d:'+item.id)?'disabled':''}>${S.busy.has('d:'+item.id)?'Publishing…':'Approve &amp; publish'}</button><button class="btn" data-client-decision="changes_requested" data-kind="draft" data-id="${esc(item.id)}">Request changes</button></div>`:review?`<details><summary>Record your decision</summary><p>Your review applies to this exact copy. Your agency authorizes publication separately.</p><label class="approval-check"><input type="checkbox" id="client-read-${esc(item.id)}"> I reviewed this complete proposal.</label><div class="actions"><button class="btn primary" data-client-decision="approved" data-kind="${kind}" data-id="${esc(item.id)}">Approve this version</button><button class="btn" data-client-decision="changes_requested" data-kind="${kind}" data-id="${esc(item.id)}">Request changes</button></div></details>`:''}</article>`;
 }
 
 function businessView(s, d) { return '<section class="card"><h2>Locations and market coverage</h2><button class="btn" data-market-open>Review business profile</button></section>' + profileView(s) + priorityPanel(s) + knowledgePanel(s); }
@@ -1464,7 +1474,7 @@ async function loadAgency() {
     sb.from("fixes").select("id,site_id,field,status,after,before,data,source,created_at").eq("status", "pending").limit(5000),
     sb.from("fixes").select("site_id,deployed_at").eq("status", "deployed").gte("deployed_at", month.toISOString()).limit(10000),
     sb.from("fixes").select("site_id").eq("status", "failed").limit(5000),
-    sb.from("drafts").select("site_id,status").eq("status", "needs_review"),
+    sb.from("draft_pipeline").select("site_id,lane").eq("lane", "approval"),
     sb.from("tasks").select("site_id,status").eq("status", "pending").limit(5000),
     sb.from("connectors").select("id,site_id,type,status,last_error,last_checked_at"),
     sb.from("aeo_runs").select("site_id,status,summary,finished_at,started_at").order("started_at", { ascending: false }).limit(400),
@@ -1777,7 +1787,7 @@ function overviewChart(d) {
 function overviewDecision(s,d,client=false) {
   const issues=client?[]:attention(s,d);
   const ordered=[...issues.filter(x=>x.sev==='crit'),...issues.filter(x=>x.sev!=='crit')];
-  const fixes=(d.fixes||[]).filter(readyFix).length,drafts=(d.drafts||[]).filter(x=>x.status==='needs_review').length;
+  const fixes=(d.fixes||[]).filter(readyFix).length,drafts=(d.drafts||[]).filter(x=>pendingDraft(x,d)).length;
   const reviews=[...(drafts?[{t:`${plural(drafts,'draft')} ready for review`,why:'Read the work, check the facts and approve the exact version.',h:href('content'),cta:'Review content'}]:[]),...(fixes?[{t:`${plural(fixes,'website improvement')} to review`,why:'Compare the current page with the proposed change before deciding.',h:href('fixes'),cta:'Review improvements'}]:[])];
   // Failures first, then prepared work; secondary warnings stay available on demand.
   const items=[...ordered.filter(x=>x.sev==='crit'),...reviews,...ordered.filter(x=>x.sev!=='crit')];
@@ -1796,7 +1806,7 @@ function overviewView(s,d,client=false) {
   const orders=ECOM.includes(s.platform)&&connected(d,'shopify')&&!client;
   if(orders&&!S.sales[s.id])loadSales(s.id);
   const sales=S.sales[s.id];
-  const outcomes=[['Verified website changes',num(verified),'Confirmed on the public page'],['Named in AI answers',run&&successfulAnswers(run)>0&&run.summary?.visibility!=null?`${run.summary.visibility}%`:'—',run?`${successfulAnswers(run)} successful answers${partialAeo(run)?' · partial coverage':''} · ${fmtShort(run.finished_at||run.started_at)}`:'No completed check recorded'],...(orders?[['Store sales · 7 days',sales?.data?money(sales.data.cur):'—',sales?.data?`${num(sales.data.orders)} orders · reported by Shopify`:sales?.error||'Loading your store report']]:[['Content awaiting review',num((d.drafts||[]).filter(x=>x.status==='needs_review').length),'Publishing requires approval']])];
+  const outcomes=[['Verified website changes',num(verified),'Confirmed on the public page'],['Named in AI answers',run&&successfulAnswers(run)>0&&run.summary?.visibility!=null?`${run.summary.visibility}%`:'—',run?`${successfulAnswers(run)} successful answers${partialAeo(run)?' · partial coverage':''} · ${fmtShort(run.finished_at||run.started_at)}`:'No completed check recorded'],...(orders?[['Store sales · 7 days',sales?.data?money(sales.data.cur):'—',sales?.data?`${num(sales.data.orders)} orders · reported by Shopify`:sales?.error||'Loading your store report']]:[['Content awaiting approval',num((d.drafts||[]).filter(x=>pendingDraft(x,d)).length),'Finished work only · approving publishes it']])];
   const events=client?[]:buildEvents(d).slice(0,4);
   return `${client?'':checkupBanner(s)}<header class="overview-head"><div><div class="eyebrow">Your agency, connected</div><h1>Your marketing, in motion.</h1><p>${esc(s.name)} · A clear view of performance, priorities and the work behind them.</p></div><div class="head-actions"><span class="period-label">${esc(new Date().toLocaleDateString(undefined,{month:'short',day:'numeric',year:'numeric'}))}</span><button class="btn" data-client-refresh>${icon('refresh',14)} Refresh workspace</button></div></header>
     ${client?`<div class="banner info">${(d.role||s.role)==='reviewer'?'You can review work and record decisions. Your agency handles execution.':'You have viewing access. Message your team to discuss a change.'}</div>`:`<section class="overview-command" aria-label="Ask Samaritan">${assistantPanel(s)}</section>`}
@@ -1812,6 +1822,39 @@ async function loadSales(id) {
   if (S.page === "today" && S.siteId === id && !S.modal) render();
 }
 
+// ---------- Production pipeline ----------
+const inProduction=x=>x.lane==='production'||x.lane==='attention'||(x.status==='approved'&&x.kind==='Content brief'&&x.stage);
+function pipelineNote(x,d){
+ if(x.status==='needs_review'&&x.lane==='approval')return `<p class="kind pipeline-note">Ready to publish${x.prepared_by==='system'?' · prepared by Samaritan':''} · ${x.adapter==='shopify_article'?'publishes to your Shopify blog':'adds this section to the page in Shopify'} · checked on the live page afterwards.</p>`;
+ if(!inProduction(x))return '';
+ const made=x.deliverable_id&&(d?.drafts||[]).find(y=>y.id===x.deliverable_id);
+ const why=x.stage==='delivered'?`Turned into a finished article${made?`: <a href="#draft-${esc(made.id)}">${esc(made.title)}</a>`:''}.`
+  :x.stage==='producing'?'Samaritan is writing the finished article now.'
+  :x.stage==='queued'?`In production. Samaritan turns this plan into a finished article${x.blocker?.code==='retrying'?' (retrying after: '+esc(x.blocker.detail)+')':''}.`
+  :x.stage==='blocked'&&x.blocker?esc(x.blocker.detail)
+  :(x.reasons||[]).map(r=>esc(r.detail)).join(' ')||'Waiting to be sorted into production.';
+ return `<p class="kind pipeline-note"><b>${x.stage==='delivered'?'Delivered':x.stage==='blocked'||x.lane==='attention'?'Cannot be published yet':'In production'}</b> · ${why}</p>`;
+}
+function productionPanel(d){
+ const rows=(d.drafts||[]).filter(inProduction);if(!rows.length)return '';
+ const n=f=>rows.filter(f).length,making=n(x=>['queued','producing'].includes(x.stage)),done=n(x=>x.stage==='delivered'),blocked=rows.filter(x=>x.stage==='blocked'||(x.lane==='attention'&&x.stage!=='delivered')||!x.stage);
+ const why={};for(const x of blocked){const k=x.blocker?.detail||(x.reasons||[])[0]?.detail||'Waiting to be sorted into production.';(why[k]||=[]).push(x);}
+ return `<details class="card production-panel"><summary><b>Production pipeline</b> · ${num(making)} being finished · ${num(done)} delivered · ${num(blocked.length)} cannot be published yet<span class="kind"> · not part of your approval count</span></summary><p class="muted">Plans and briefs stay here until Samaritan has turned them into finished, publishable work. Only finished work asks for your approval.</p>${Object.entries(why).sort((a,b)=>b[1].length-a[1].length).map(([k,xs])=>`<div class="production-reason"><b>${plural(xs.length,'item')}</b> · ${esc(k)}<div class="kind">${xs.slice(0,4).map(x=>esc(x.title)).join(' · ')}${xs.length>4?` · and ${xs.length-4} more`:''}</div></div>`).join('')}</details>`;
+}
+// One approval publishes the exact version shown, then checks the live page. No second step.
+async function approveWork(id){
+ const sid=S.siteId,x=S.data[sid]?.drafts.find(r=>String(r.id)===String(id));
+ if(!x||S.busy.has('d:'+id))return;
+ S.busy.add('d:'+id);render();
+ try{
+  const {data:{session}}=await sb.auth.getSession();
+  const r=await fetch(`${CFG.supabaseUrl}/functions/v1/playbooks`,{method:'POST',headers:{'Content-Type':'application/json',Authorization:`Bearer ${session?.access_token}`,apikey:CFG.supabaseAnonKey},body:JSON.stringify({action:'approve',site_id:sid,draft_id:id,payload_hash:x.payload_hash})});
+  const j=await r.json().catch(()=>({}));if(!r.ok||j.error)throw new Error(j.error||'Could not approve this item.');
+  toast(j.already?'Already approved. Publishing is under way.':'Approved. Publishing now, then we check the live page.');
+ }catch(e){toast(e.message);}
+ finally{S.busy.delete('d:'+id);if(S.siteId===sid){if(S.isAdmin)await loadWorkspace(sid).catch(()=>{});await refresh();}}
+}
+document.addEventListener('click',e=>{const b=e.target.closest?.('[data-approve-work]');if(b){b.disabled=true;approveWork(b.dataset.approveWork);}});
 // ---------- All tasks ----------
 function oppWhy(x){const o=oppFor(x.id);return o?`<div class="opp-why"><span class="opp-tag">${o.kind==='ai_answer_gap'?'AI search gap':o.kind==='article_aeo'?'Published article':'Thin page'}</span><p>${esc(o.why)}</p></div>`:'';}
 function draftCard(x) {
@@ -1819,8 +1862,8 @@ function draftCard(x) {
   const st = x.ranking_hold?['Needs ranking evidence','warn']:draftStatus[x.status];
   return `<article id="draft-${esc(x.id)}" class="item ${x.status !== "needs_review" ? "resolved" : ""}">
     <div class="item-head"><span class="status ${st[1]}">${st[0]}</span><span class="kind">${esc(x.kind)} · ${fmtShort(x.created_at)}</span><span class="target" style="flex-basis:100%">${esc(x.title)}</span></div>
-    ${oppWhy(x)}
-    <div class="actions">${x.ranking_hold?'<span class="kind">Held for evidence review</span>':x.status === "needs_review" && x.kind === "FAQ section" && oppFor(x.id)?.publishable ? `<button class="btn" data-draft="rejected" data-id="${esc(x.id)}" ${busy ? "disabled" : ""}>Reject</button>` : x.status === "needs_review" ? `<button class="btn primary" data-draft="approved" data-id="${esc(x.id)}" ${busy ? "disabled" : ""}>Approve</button><button class="btn" data-draft="rejected" data-id="${esc(x.id)}" ${busy ? "disabled" : ""}>Reject</button>` : oppFor(x.id)?.evidence?.publish ? '' : `<button class="btn ghost" data-draft="needs_review" data-id="${esc(x.id)}" ${busy ? "disabled" : ""}>Undo</button>`}
+    ${oppWhy(x)}${pipelineNote(x,S.data[S.siteId])}
+    <div class="actions">${x.ranking_hold?'<span class="kind">Held for evidence review</span>':x.status === "needs_review" && x.kind === "FAQ section" && oppFor(x.id)?.publishable ? `<button class="btn" data-draft="rejected" data-id="${esc(x.id)}" ${busy ? "disabled" : ""}>Reject</button>` : x.status === "needs_review" ? `${x.lane==='approval'?`<button class="btn primary" data-approve-work="${esc(x.id)}" ${busy ? "disabled" : ""}>${busy?'Publishing…':'Approve &amp; publish'}</button>`:''}<button class="btn" data-draft="rejected" data-id="${esc(x.id)}" ${busy ? "disabled" : ""}>Reject</button>` : oppFor(x.id)?.evidence?.publish ? '' : `<button class="btn ghost" data-draft="needs_review" data-id="${esc(x.id)}" ${busy ? "disabled" : ""}>Undo</button>`}
       <button class="btn ghost" data-copy-draft="${esc(x.id)}">Copy</button>${x.kind==='Blog post'?`<button class="btn ghost" data-copy-draft="${esc(x.id)}" data-copy-format="html">Copy HTML</button>`:''}<button class="btn ghost" data-draft-edit="${esc(x.id)}">Edit</button><button class="btn ghost danger" data-draft-del="${esc(x.id)}">Delete</button></div>
     ${x.ranking_hold?`<p class="kind">${esc(x.ranking_hold.reason)}</p>`:publicationControls(x)}
     ${x.status === "needs_review" ? suggestBox("draft", x) : ""}
@@ -1839,7 +1882,7 @@ function filteredFixes(d) {
   return rows.sort((a, b) => (PRI_ORDER[a.priority] ?? 2) - (PRI_ORDER[b.priority] ?? 2) || String(a.page_name).localeCompare(String(b.page_name)));
 }
 function reviewView(s, d) {
-  const drafts = d.drafts.filter((x) => x.status === "needs_review");
+  const drafts = d.drafts.filter((x) => pendingDraft(x, d));
   const shop = connected(d, "shopify");
   const held = d.fixes.filter(f=>f.status==="pending"&&searchReviewHold(f));
   const by = (st) => d.fixes.filter((f) => st === "pending" ? readyFix(f) : st === "approved" ? ["approved", "rollback_requested"].includes(f.status) : f.status === st).length;
@@ -1939,8 +1982,22 @@ function buildEvents(d) {
   const grp = (rows, dateKey, keyFn) => { const m = {}; rows.forEach((f) => { if (!f[dateKey]) return; const k = f[dateKey].slice(0, 10) + "|" + keyFn(f); (m[k] ||= { at: f[dateKey], n: 0, f }).n++; if (f[dateKey] > m[k].at) m[k].at = f[dateKey]; }); return Object.values(m); };
   grp(d.fixes.filter((f) => ["deployed", "rolled_back"].includes(f.status)), "deployed_at", (f) => f.status + f.field).forEach((g) => ev.push({ at: g.at, t: `${g.n} ${(FIELD[g.f.field] || g.f.field).toLowerCase()} change${g.n === 1 ? "" : "s"} ${g.f.status === "rolled_back" ? "restored on the platform" : "saved to the platform"}`, e: g.f.status === "rolled_back" ? "fixes.rolled_back" : "fixes.deployed", c: g.f.status === "rolled_back" ? "warn" : "ok", i: "globe" }));
   grp(d.fixes.filter((f) => ["approved", "rejected"].includes(f.status) || (f.status === "deployed" && f.decided_at)), "decided_at", (f) => (f.status === "rejected" ? "r" : "a") + f.field).forEach((g) => ev.push({ at: g.at, t: `${g.n} ${(FIELD[g.f.field] || g.f.field).toLowerCase()} fix${g.n === 1 ? "" : "es"} ${g.f.status === "rejected" ? "rejected" : "approved"}`, e: g.f.status === "rejected" ? "fixes.rejected" : "fixes.approved", c: g.f.status === "rejected" ? "warn" : "", i: "checks" }));
-  d.aeoRuns.forEach((r) => ev.push({ at: r.finished_at || r.started_at, t: r.status === "done" ? `AI visibility check finished · named in ${r.summary?.visibility ?? 0}% of answers` : r.status === "running" ? "AI visibility check started" : "AI visibility check failed", e: "aeo." + r.status, c: r.status === "failed" ? "warn" : "", i: "bot" }));
+  (d.aeoRuns || []).forEach((r) => ev.push({ at: r.finished_at || r.started_at, t: r.status === "done" ? `AI visibility check finished · named in ${r.summary?.visibility ?? 0}% of answers` : r.status === "running" ? "AI visibility check started" : "AI visibility check failed", e: "aeo." + r.status, c: r.status === "failed" ? "warn" : "", i: "bot" }));
   d.drafts.forEach((x) => { ev.push({ at: x.created_at, t: `Draft created: ${x.title}`, e: "draft.created", i: "file" }); if (x.decided_at) ev.push({ at: x.decided_at, t: `Draft ${x.status === "approved" ? "approved" : "rejected"}: ${x.title}`, e: "draft." + x.status, c: x.status === "approved" ? "ok" : "warn", i: "file" }); });
+  // The same pipeline, publishing and verification records the review queue and client view read.
+  const titleOf = (id) => d.drafts.find((x) => x.id === id)?.title || "content";
+  d.drafts.forEach((x) => {
+    if (x.source_draft_id && x.checked_at) ev.push({ at: x.created_at, t: `Samaritan finished an article from a plan: ${x.title}`, e: "work.produced", c: "ok", i: "file" });
+    if (x.status === "needs_review" && x.lane === "approval" && x.checked_at) ev.push({ at: x.checked_at, t: `Ready for approval: ${x.title}`, e: "work.ready", c: "ok", i: "checks" });
+  });
+  const stuck = d.drafts.filter((x) => x.stage === "blocked" && x.gate_at);
+  if (stuck.length) ev.push({ at: stuck.map((x) => x.gate_at).sort().pop(), t: `${stuck.length} plan${stuck.length === 1 ? "" : "s"} cannot be published yet. See the production pipeline for each reason.`, e: "work.blocked", c: "warn", i: "file" });
+  [...(S.workspace[S.siteId]?.publications || []), ...(S.results[S.siteId]?.page_publications || []), ...(d.publications || [])].forEach((p) => {
+    const name = p.snapshot?.title || titleOf(p.draft_id), state = p.verification?.state || (typeof p.verification === "string" ? p.verification : "");
+    if (p.published_at) ev.push({ at: p.published_at, t: `Published to Shopify: ${name}`, e: "work.published", c: "ok", i: "globe" });
+    if (state && (p.verification?.checked_at || p.published_at)) ev.push({ at: p.verification?.checked_at || p.published_at, t: state === "verified" ? `Checked on the live page: ${name}` : `Live-page check needs review (${String(state).replaceAll("_", " ")}): ${name}`, e: "work." + state, c: state === "verified" ? "ok" : "warn", i: "check" });
+    if (["failed", "uncertain", "blocked"].includes(p.status)) ev.push({ at: p.attempted_at || p.created_at || p.published_at, t: `Publishing needs attention: ${name}${p.error ? " · " + p.error : ""}`, e: "work.failed", c: "warn", i: "globe" });
+  });
   d.leads.forEach((l) => ev.push({ at: l.created_at, t: `Lead added: ${l.name}`, e: "lead.created", i: "users" }));
   d.tasks.filter((t) => t.decided_at && t.status !== "pending").forEach((t) => ev.push({ at: t.decided_at, t: `Website fix ${t.status === "done" ? "marked done" : "dismissed"}: ${t.kind}`, e: "task." + t.status, c: t.status === "done" ? "ok" : "warn", i: "check" }));
   d.connectors.filter((c) => c.last_checked_at).forEach((c) => ev.push({ at: c.last_checked_at, t: `${CONNECTOR_TYPES[c.type]?.name || c.type} ${c.status === "connected" ? "checked and connected" : "isn't working"}`, e: "integration." + c.status, c: c.status === "connected" ? "ok" : "warn", i: "plug" }));
@@ -2021,7 +2078,7 @@ function paidChannelView(s,d){
  if(sub==='economics')return header+nav+adsView(s,d);
  if(sub==='creative')return header+nav+leadgenView(s,d);
  if(sub==='controls')return header+nav+paidConsole(s,d);
- return header+nav+`<a class="btn primary" href="${href('paid','creative')}">Prepare a new campaign</a><div style="height:16px"></div>`+measurementSettings(s,d)+paidConsole(s,d)+channelPriorities('Prepared campaign work',drafts.filter(x=>x.status==='needs_review').map(x=>({title:x.title,detail:x.kind||'Campaign draft',page:'paid',sub:'creative'})),'No campaign drafts awaiting review.');
+ return header+nav+`<a class="btn primary" href="${href('paid','creative')}">Prepare a new campaign</a><div style="height:16px"></div>`+measurementSettings(s,d)+paidConsole(s,d)+channelPriorities('Campaign briefs in production',drafts.filter(x=>x.status==='needs_review').map(x=>({title:x.title,detail:x.kind||'Campaign draft',page:'paid',sub:'creative'})),'No campaign drafts awaiting review.');
 }
 function contentQueue(s,d){
  const w=S.workspace[s.id]||{},topics=w.topics||[],pubs=[...(w.publications||[]),...(S.results[s.id]?.page_publications||[])],jobs=(S.operations?.[s.id]?.jobs||[]).filter(j=>j.channel==='content'),week=Date.now()-7*DAY;
@@ -3159,6 +3216,7 @@ function verifyBadge(t) {
   return "";
 }
 async function setDraft(id, status) {
+  if (status === "approved") return approveWork(id);
   S.busy.add("d:" + id); render();
   const { error } = await sb.from("drafts").update({ status, decided_at: status === "needs_review" ? null : new Date().toISOString() }).eq("id", id);
   S.busy.delete("d:" + id);

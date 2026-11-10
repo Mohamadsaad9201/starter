@@ -28,7 +28,7 @@ The `engine` function (publishing, checkups, Search Console sync) is unchanged; 
 
 ## Playbooks autopilot
 
-`playbooks` (deployed v8, `verify_jwt` off; it checks the engine key or workspace membership itself) prepares work
+`playbooks` (deployed v11, `verify_jwt` off; it checks the engine key or workspace membership itself) prepares work
 for every active business without anyone pressing a button:
 
 - **Schedule:** pg_cron job `playbooks-autopilot`, hourly 8am–7pm Detroit (`35 12-23 * * *` UTC), set up in
@@ -52,3 +52,11 @@ select net.http_post(url := 'https://egtvvunkdkpqmfafhkjg.supabase.co/functions/
     (select decrypted_secret from vault.decrypted_secrets where name = 'engine_cron_key')),
   body := '{"action":"autopilot"}'::jsonb, timeout_milliseconds := 120000);
 ```
+
+## Production pipeline and approvals
+
+Briefs are not client approvals. `draft_pipeline` holds one row per draft with a `lane` the database computes
+(`approval`, `production`, `attention`, `closed`). The `playbooks` function's `produce` action (cron
+`playbooks-produce`, every 10 minutes) finishes eligible briefs into articles; its `approve` action is the only way to
+approve publishable work and hands it to the engine's publish and verify jobs. Details, commands and rollback:
+`docs/samaritan-integration/runbook.md`. Audit and capability matrix: `docs/samaritan-integration/current-state.md`.
