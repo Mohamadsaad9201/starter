@@ -1,0 +1,791 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>The Ribeye Royale | A Carnivore's Dream</title>
+<meta name="description" content="The Ribeye Royale — 100% Zabiha Halal ribeye, freshly cut to order. A carnivore's dream.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;700;900&family=Inter:wght@400;500;600&family=Manrope:wght@400;700&family=Galada&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/gsap.min.js"></script>
+<script type="module" src="https://unpkg.com/@google/model-viewer@3.5.0/dist/model-viewer.min.js"></script>
+<style>
+:root {
+    --bg-color: #0a0a0a;
+    --text-color: #ffffff;
+    --accent-color: #ffffff;
+    --muted-color: rgba(255, 255, 255, 0.7);
+    --glass-bg: rgba(255, 255, 255, 0.05);
+    --glass-border: rgba(255, 255, 255, 0.1);
+    --font-main: 'Inter', sans-serif;
+    --font-heading: 'Galada', cursive;
+    --accent: #f6c48b;
+    --on-accent: #2a0a04;
+
+    /* Dynamic Background Variables — ember red (Freshly Cut) */
+    --bg-inner: #8a1f12;
+    --bg-mid: #4a0e08;
+    --bg-outer: #140302;
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+body {
+    background: radial-gradient(circle at center, var(--bg-inner) 0%, var(--bg-mid) 50%, var(--bg-outer) 100%);
+    color: var(--text-color);
+    font-family: var(--font-main);
+    overflow: hidden;
+    height: 100vh;
+    transition: background 1.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+body.seared-theme {
+    --bg-inner: #8a4a12;
+    --bg-mid: #4a2408;
+    --bg-outer: #140a02;
+}
+
+/* ---------- Embers (replaces bubbles) ---------- */
+#embers-container {
+    position: fixed; inset: 0;
+    pointer-events: none; z-index: 0; overflow: hidden;
+}
+.ember {
+    position: absolute;
+    border-radius: 50%;
+    pointer-events: none;
+    background: radial-gradient(circle, #fff3c4 0%, #ffb347 35%, rgba(255, 90, 20, 0.6) 60%, transparent 72%);
+    mix-blend-mode: screen;
+}
+@keyframes floatUpImg {
+    0%   { transform: translateY(0) translateX(0) rotate(0deg); opacity: 0; }
+    10%  { opacity: 0.4; }
+    90%  { opacity: 0.4; }
+    100% { transform: translateY(-110vh) translateX(30px) rotate(360deg); opacity: 0; }
+}
+
+/* ---------- Header ---------- */
+.header {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 2rem 4%; position: fixed; top: 0; width: 100%; z-index: 100;
+}
+.logo {
+    display: flex; align-items: center; gap: 0.5rem;
+    font-weight: 700; font-size: 1.2rem; font-family: var(--font-heading);
+}
+.nav {
+    display: flex; gap: 0.5rem; background: var(--glass-bg);
+    padding: 0.4rem; border-radius: 100px; border: 1px solid var(--glass-border);
+}
+.nav.glass {
+    position: relative;
+    background: rgba(255, 255, 255, 0.08);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1), inset 0 0 0 1px rgba(255, 255, 255, 0.1);
+    backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px);
+}
+.nav-item {
+    font-family: 'Manrope', sans-serif; color: var(--muted-color); text-decoration: none;
+    font-size: 0.85rem; font-weight: 500; padding: 0.5rem 1.2rem; border-radius: 100px;
+    transition: all 0.3s ease;
+}
+.nav-item:hover, .nav-item.active { background: var(--accent); color: var(--on-accent); }
+.contact-btn {
+    background: rgba(0, 0, 0, 0.5); color: white; border: none; padding: 0.9rem 2rem;
+    border-radius: 100px; font-weight: 600; font-size: 0.85rem; cursor: pointer;
+    transition: all 0.3s ease; text-decoration: none; font-family: var(--font-main);
+}
+.contact-btn:hover { background: rgba(0, 0, 0, 0.7); transform: translateY(-2px); }
+
+/* ---------- Hero ---------- */
+.hero {
+    height: 100vh; display: flex; align-items: center; justify-content: center;
+    padding: 0 4%; padding-top: 5rem;
+}
+.hero-content {
+    display: flex; justify-content: space-between; align-items: stretch;
+    width: 100%; height: 100%; position: relative;
+}
+.main-title, .side-title {
+    font-family: var(--font-heading);
+    font-size: clamp(5rem, 10vw, 12rem);
+    line-height: 0.8; font-weight: 400; white-space: nowrap; color: white;
+}
+.outline { color: var(--text-color); }
+
+/* Leaves (herbs) */
+.leaves-container {
+    position: absolute; inset: 0; pointer-events: none; z-index: -1;
+    transition: transform 0.1s ease-out;
+}
+.leaf {
+    position: absolute; width: 60px; height: 60px; pointer-events: none; z-index: -1;
+    filter: drop-shadow(0 5px 15px rgba(0, 0, 0, 0.2));
+    --progress-bar-color: transparent;
+}
+.l1 { top: 10%; left: 15%; }
+.l2 { top: 40%; left: 80%; width: 140px; height: 140px; opacity: 0.4; }
+.l3 { top: 70%; left: 75%; width: 80px; height: 80px; }
+.l4 { top: 85%; left: 20%; width: 120px; height: 120px; opacity: 0.3; }
+
+/* Left column */
+.hero-left {
+    display: flex; flex-direction: column; height: 100%;
+    padding: 6rem 0; gap: 2rem; z-index: 100;
+}
+.description { color: var(--muted-color); font-size: 1.1rem; line-height: 1.6; max-width: 400px; }
+.primary-btn {
+    display: flex; align-items: center; gap: 1.5rem;
+    background: rgba(0, 0, 0, 0.5); color: white; border: none;
+    padding: 0.4rem 0.4rem 0.4rem 1.5rem; border-radius: 100px;
+    font-weight: 700; cursor: pointer; width: fit-content;
+    transition: all 0.3s ease; text-decoration: none; font-size: 0.95rem;
+}
+.primary-btn:hover { background: rgba(0, 0, 0, 0.7); transform: translateY(-3px); }
+.plus-icon {
+    background: var(--accent); color: var(--on-accent);
+    width: 38px; height: 38px; display: flex; align-items: center; justify-content: center;
+    border-radius: 50%; font-size: 1.4rem; font-weight: 900; line-height: 1; padding-bottom: 2px;
+}
+.award-badge { display: flex; align-items: center; gap: 1rem; margin-top: auto; }
+.award-icon {
+    width: 48px; height: 48px; background: var(--glass-bg); border: 1px solid var(--glass-border);
+    border-radius: 12px; display: flex; align-items: center; justify-content: center;
+}
+.award-text { display: flex; flex-direction: column; }
+.award-title { font-size: 0.7rem; letter-spacing: 0.1em; color: var(--muted-color); }
+.award-subtitle { font-size: 0.85rem; font-weight: 600; }
+
+/* Floating garnish (replaces berries) */
+.berries-container, .berries-container-bg {
+    position: absolute; inset: 0; pointer-events: none;
+    transition: transform 0.1s ease-out;
+}
+.berries-container { z-index: 110; }
+.berries-container-bg { z-index: 0; }
+.berry {
+    position: absolute; width: 120px; height: 120px;
+    filter: drop-shadow(0 10px 20px rgba(0, 0, 0, 0.35));
+    transition: transform 0.8s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+.berry svg { width: 100%; height: 100%; display: block; overflow: visible; }
+.b1 { top: 25%; left: 30%; width: 110px; height: 110px; }
+.b2 { top: 60%; left: 42%; width: 60px;  height: 60px; }
+.b3 { top: 30%; left: 62%; width: 150px; height: 150px; }
+.b4 { top: 15%; left: 48%; width: 70px;  height: 70px; }
+.b5 { top: 75%; left: 20%; width: 80px;  height: 80px; }
+.b6 { top: 45%; left: 75%; width: 120px; height: 120px; }
+.b7 { top: 15%; left: 40%; width: 50px;  height: 50px; opacity: 0.7; }
+.b8 { top: 50%; left: 55%; width: 44px;  height: 44px; opacity: 0.6; }
+.b9 { top: 80%; left: 35%; width: 48px;  height: 48px; opacity: 0.7; }
+
+/* Center product: the steak */
+.hero-center {
+    display: flex; justify-content: center; align-items: center;
+    position: absolute; inset: 0; z-index: 1; opacity: 0;
+    animation: fadeIn 1.5s ease-out 0.3s forwards, float 6s ease-in-out infinite;
+    pointer-events: none;
+    background: radial-gradient(circle at center, rgba(255, 140, 60, 0.12) 0%, transparent 70%);
+}
+@keyframes fadeIn { to { opacity: 1; } }
+@keyframes float { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-20px); } }
+
+.steak-stage {
+    position: fixed; top: 50%; left: 50%;
+    width: min(46vw, 640px); aspect-ratio: 4 / 3;
+    transform: translate(-50%, -50%);
+    perspective: 1400px;
+}
+.steak-3d {
+    position: absolute; inset: 0;
+    transform-style: preserve-3d;
+    will-change: transform, filter;
+}
+.steak-layer {
+    position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible;
+}
+.steak-layer.side { filter: brightness(0.45) saturate(1.2); }
+.steak-layer.face { filter: drop-shadow(0 40px 50px rgba(0,0,0,0.45)); }
+.steak-3d { --grill: 0; --crust: 0; }
+.steak-3d.seared { --grill: 1; --crust: 1; }
+
+/* Right column */
+.hero-right {
+    display: flex; flex-direction: column; justify-content: space-between;
+    align-items: flex-end; text-align: right; height: 100%;
+    padding: 6rem 0; z-index: 100; width: 450px; pointer-events: none;
+}
+.product-carousel {
+    display: flex; flex-direction: column; gap: 1.5rem; align-items: flex-end; pointer-events: auto;
+}
+.carousel-cards { display: flex; gap: 1rem; }
+.card {
+    background: var(--glass-bg); border: 1px solid var(--glass-border);
+    padding: 1rem; padding-top: 5rem; border-radius: 28px;
+    display: flex; flex-direction: column; align-items: center; gap: 1.5rem;
+    cursor: pointer; transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+    width: 135px; position: relative; backdrop-filter: blur(10px); text-align: center;
+}
+.card:hover { background: rgba(255, 255, 255, 0.12); border-color: rgba(255, 255, 255, 0.4); }
+.card.active { border-color: var(--accent); }
+.card .card-img {
+    width: 140px; height: 105px; margin-top: -8rem;
+    filter: drop-shadow(0 20px 35px rgba(0, 0, 0, 0.5));
+    transition: transform 0.5s cubic-bezier(0.34, 1.56, 0.64, 1) !important;
+    display: block; will-change: transform; pointer-events: none;
+    transform: rotate(-14deg);
+}
+.card:hover .card-img { transform: translateY(-30px) rotate(-26deg) scale(1.15) !important; }
+.card-info { display: flex; flex-direction: column; font-size: 0.7rem; width: 100%; }
+.card-info span:first-child { font-weight: 600; }
+.card-info span:last-child { color: var(--muted-color); }
+.carousel-nav { display: flex; gap: 1rem; }
+.nav-arrow {
+    background: var(--glass-bg); border: 1px solid var(--glass-border); color: white;
+    width: 36px; height: 36px; border-radius: 50%; cursor: pointer;
+    display: flex; align-items: center; justify-content: center; transition: background 0.3s;
+}
+.nav-arrow:hover { background: rgba(255, 255, 255, 0.1); }
+.side-title { align-self: flex-end; text-align: right; }
+
+.save-tag {
+    position: absolute; top: 3.6rem; left: 50%; transform: translateX(-50%);
+    background: var(--accent); color: var(--on-accent);
+    font-size: 0.6rem; font-weight: 700; letter-spacing: 0.05em;
+    padding: 0.2rem 0.5rem; border-radius: 100px;
+}
+
+@keyframes shine {
+    from { transform: translateX(-100%) rotate(45deg); }
+    to { transform: translateX(200%) rotate(45deg); }
+}
+
+@media (max-width: 1200px) {
+    .steak-stage { width: 80vw; top: 40%; }
+    .hero-content { padding-top: 8rem; }
+    .hero-center { order: -1; }
+    .main-title, .side-title { font-size: 5rem; }
+    .hero-right { align-items: center; text-align: center; }
+    .side-title { align-self: center; text-align: center; }
+    .nav { display: none; }
+}
+</style>
+</head>
+<body>
+
+<!-- Shared SVG symbols: the ribeye + garnishes -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <radialGradient id="meat" cx="48%" cy="55%" r="60%">
+      <stop offset="0%" stop-color="#d23a3f"/>
+      <stop offset="55%" stop-color="#ad2330"/>
+      <stop offset="100%" stop-color="#7c1220"/>
+    </radialGradient>
+    <radialGradient id="eye" cx="50%" cy="50%" r="55%">
+      <stop offset="0%" stop-color="#c2283a"/>
+      <stop offset="100%" stop-color="#8f1626"/>
+    </radialGradient>
+    <linearGradient id="fat" x1="0.3" y1="0" x2="0.6" y2="1">
+      <stop offset="0%" stop-color="#fff4e6"/>
+      <stop offset="38%" stop-color="#ecd0b0"/>
+      <stop offset="52%" stop-color="#9a3a2a"/>
+      <stop offset="100%" stop-color="#6e2016"/>
+    </linearGradient>
+    <clipPath id="meatClip">
+      <path d="M78,152 C74,95 138,58 212,60 C290,63 340,106 332,160 C325,214 272,246 200,242 C128,238 82,204 78,152Z"/>
+    </clipPath>
+    <radialGradient id="crust" cx="50%" cy="50%" r="60%">
+      <stop offset="55%" stop-color="#5a2410" stop-opacity="0"/>
+      <stop offset="100%" stop-color="#3a1408" stop-opacity="0.95"/>
+    </radialGradient>
+    <radialGradient id="pepper" cx="35%" cy="30%" r="70%">
+      <stop offset="0%" stop-color="#6b5a4a"/>
+      <stop offset="60%" stop-color="#2a201a"/>
+      <stop offset="100%" stop-color="#0e0a08"/>
+    </radialGradient>
+    <linearGradient id="chili" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#ff5a3c"/>
+      <stop offset="100%" stop-color="#a3120e"/>
+    </linearGradient>
+    <radialGradient id="garlic" cx="40%" cy="35%" r="70%">
+      <stop offset="0%" stop-color="#fffaf0"/>
+      <stop offset="100%" stop-color="#e2d2b8"/>
+    </radialGradient>
+    <clipPath id="steakClip">
+      <path d="M58,150 C52,82 128,34 212,38 C302,42 364,96 352,162 C343,228 280,270 198,264 C116,258 63,216 58,150Z"/>
+    </clipPath>
+
+    <symbol id="steak" viewBox="0 0 400 300">
+      <!-- fat cap edge -->
+      <path d="M58,150 C52,82 128,34 212,38 C302,42 364,96 352,162 C343,228 280,270 198,264 C116,258 63,216 58,150Z" fill="url(#fat)"/>
+      <g clip-path="url(#steakClip)">
+        <!-- main meat body (inset) -->
+        <path d="M78,152 C74,95 138,58 212,60 C290,63 340,106 332,160 C325,214 272,246 200,242 C128,238 82,204 78,152Z" fill="url(#meat)"/>
+        <!-- spinalis cap separation line -->
+        <path d="M104,120 C150,84 250,78 312,118" fill="none" stroke="#f3dcc4" stroke-width="7" stroke-linecap="round" opacity="0.9"/>
+        <!-- ribeye "eye" -->
+        <ellipse cx="205" cy="172" rx="78" ry="52" fill="url(#eye)"/>
+        <path d="M150,150 C175,132 238,130 262,150" fill="none" stroke="#f6e2cc" stroke-width="4" opacity="0.85"/>
+        <!-- marbling -->
+        <g fill="none" stroke="#fbe9d8" stroke-linecap="round" opacity="0.75">
+          <path d="M120,170 C140,160 150,185 172,176" stroke-width="2.5"/>
+          <path d="M230,190 C248,182 262,200 284,192" stroke-width="2"/>
+          <path d="M180,205 C196,214 214,200 232,212" stroke-width="2.2"/>
+          <path d="M250,140 C262,150 280,138 296,150" stroke-width="1.8"/>
+          <path d="M140,210 C150,220 166,214 172,226" stroke-width="1.6"/>
+          <path d="M196,160 C204,166 214,158 222,166" stroke-width="1.4"/>
+          <path d="M300,176 C306,190 296,200 306,212" stroke-width="1.6"/>
+          <path d="M110,135 C120,128 132,140 144,130" stroke-width="1.4"/>
+          <path d="M170,96 C186,104 204,92 222,100" stroke-width="1.8"/>
+          <path d="M250,94 C262,100 276,92 288,102" stroke-width="1.4"/>
+        </g>
+        <g fill="#fbe9d8" opacity="0.6">
+          <circle cx="160" cy="190" r="2"/><circle cx="246" cy="166" r="1.6"/>
+          <circle cx="212" cy="188" r="1.8"/><circle cx="276" cy="214" r="1.4"/>
+          <circle cx="132" cy="150" r="1.5"/><circle cx="294" cy="130" r="1.6"/>
+          <circle cx="188" cy="230" r="1.4"/><circle cx="230" cy="112" r="1.4"/>
+        </g>
+        <!-- seared crust + grill marks (toggled via CSS vars) -->
+        <rect x="0" y="0" width="400" height="300" fill="url(#crust)" style="opacity: var(--crust, 0); transition: opacity .2s"/>
+        <g clip-path="url(#meatClip)" style="opacity: var(--grill, 0)" stroke="#2a0e06" stroke-width="13" stroke-linecap="round" opacity="0.85">
+          <line x1="60" y1="120" x2="200" y2="20"/>
+          <line x1="70" y1="200" x2="270" y2="40"/>
+          <line x1="110" y1="260" x2="330" y2="80"/>
+          <line x1="200" y1="280" x2="370" y2="150"/>
+        </g>
+      </g>
+      <!-- gloss -->
+      <ellipse cx="160" cy="110" rx="70" ry="18" fill="#fff" opacity="0.10" transform="rotate(-14 160 110)"/>
+    </symbol>
+
+    <!-- garnish set A: freshly cut -->
+    <symbol id="g-pepper" viewBox="0 0 100 100">
+      <circle cx="50" cy="50" r="40" fill="url(#pepper)"/>
+      <path d="M22,44 C34,36 44,52 58,42 M30,64 C42,58 54,72 70,60 M40,26 C48,34 60,24 70,32" stroke="#000" stroke-opacity="0.45" stroke-width="3" fill="none" stroke-linecap="round"/>
+      <ellipse cx="36" cy="32" rx="10" ry="6" fill="#fff" opacity="0.18"/>
+    </symbol>
+    <symbol id="g-salt" viewBox="0 0 100 100">
+      <polygon points="50,8 88,30 84,74 48,92 14,70 18,28" fill="#f7f9fb" opacity="0.92"/>
+      <polygon points="50,8 88,30 50,48 18,28" fill="#ffffff"/>
+      <polygon points="50,48 84,74 48,92" fill="#d8e1ea"/>
+      <polygon points="18,28 50,48 48,92 14,70" fill="#e9eef3"/>
+    </symbol>
+    <symbol id="g-rosemary" viewBox="0 0 100 100">
+      <path d="M20,88 C40,60 60,36 84,12" stroke="#5b4a2a" stroke-width="3" fill="none" stroke-linecap="round"/>
+      <g fill="#3f6b3a">
+        <ellipse cx="30" cy="70" rx="13" ry="3.4" transform="rotate(-20 30 70)"/>
+        <ellipse cx="38" cy="66" rx="13" ry="3.4" transform="rotate(-80 38 66)"/>
+        <ellipse cx="44" cy="56" rx="13" ry="3.4" transform="rotate(-25 44 56)"/>
+        <ellipse cx="52" cy="52" rx="13" ry="3.4" transform="rotate(-85 52 52)"/>
+        <ellipse cx="58" cy="42" rx="12" ry="3.2" transform="rotate(-28 58 42)"/>
+        <ellipse cx="66" cy="38" rx="12" ry="3.2" transform="rotate(-88 66 38)"/>
+        <ellipse cx="72" cy="28" rx="11" ry="3" transform="rotate(-30 72 28)"/>
+        <ellipse cx="80" cy="22" rx="10" ry="3" transform="rotate(-90 80 22)"/>
+      </g>
+      <g fill="#7aa36d" opacity="0.6">
+        <ellipse cx="44" cy="56" rx="9" ry="1.2" transform="rotate(-25 44 56)"/>
+        <ellipse cx="58" cy="42" rx="8" ry="1.1" transform="rotate(-28 58 42)"/>
+      </g>
+    </symbol>
+
+    <!-- garnish set B: seared -->
+    <symbol id="g-chili" viewBox="0 0 100 100">
+      <path d="M22,28 C40,22 76,40 86,74 C88,82 80,86 74,80 C60,62 40,48 24,42 C16,38 14,31 22,28Z" fill="url(#chili)"/>
+      <path d="M22,28 C16,22 14,14 20,10 C24,16 28,20 30,26" fill="#3f6b3a"/>
+      <path d="M30,32 C50,36 70,52 80,70" stroke="#fff" stroke-opacity="0.3" stroke-width="3" fill="none" stroke-linecap="round"/>
+    </symbol>
+    <symbol id="g-garlic" viewBox="0 0 100 100">
+      <path d="M50,10 C56,22 80,34 80,60 C80,80 66,90 50,90 C34,90 20,80 20,60 C20,34 44,22 50,10Z" fill="url(#garlic)"/>
+      <path d="M50,18 C46,40 44,64 50,88 M36,34 C30,50 30,70 38,86 M64,34 C70,50 70,70 62,86" stroke="#c9b48f" stroke-width="2" fill="none" opacity="0.7"/>
+    </symbol>
+    <symbol id="g-thyme" viewBox="0 0 100 100">
+      <path d="M50,92 C50,64 46,36 54,8" stroke="#6a5532" stroke-width="2.5" fill="none" stroke-linecap="round"/>
+      <g fill="#5d7f43">
+        <ellipse cx="42" cy="78" rx="7" ry="4"/><ellipse cx="58" cy="72" rx="7" ry="4"/>
+        <ellipse cx="41" cy="62" rx="7" ry="4"/><ellipse cx="57" cy="54" rx="7" ry="4"/>
+        <ellipse cx="43" cy="44" rx="6" ry="3.6"/><ellipse cx="60" cy="36" rx="6" ry="3.6"/>
+        <ellipse cx="46" cy="26" rx="5" ry="3.2"/><ellipse cx="60" cy="18" rx="5" ry="3"/>
+      </g>
+    </symbol>
+  </defs>
+</svg>
+
+<div id="embers-container"></div>
+
+<header class="header">
+    <div class="logo">
+        <svg width="32" height="32" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="2" />
+            <path d="M8 15c0-4 2-7 4-7s4 3 4 7" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
+        </svg>
+        <span>Ribeye Royale</span>
+    </div>
+    <nav class="nav glass">
+        <a href="#" class="nav-item active">Home</a>
+        <a href="#" class="nav-item">The Cut</a>
+        <a href="#" class="nav-item">Zabiha Halal</a>
+        <a href="#" class="nav-item">Delivery</a>
+        <a href="#" class="nav-item">Reviews</a>
+    </nav>
+    <a class="contact-btn" href="https://www.halalworlddepot.com/products/the-ribeye-royale-a-carnivores-dream-freshly-cut-to-order-save-75" target="_blank" rel="noopener">Order Now</a>
+</header>
+
+<main class="hero">
+  <div class="hero-content">
+
+    <!-- Floating herb leaves (far background) -->
+    <div class="leaves-container">
+        <model-viewer class="leaf l1" src="https://api.getlayers.ai/storage/v1/object/public/public/assets/soda-14ff8a788d/leaves.glb" environment-image="neutral" exposure="1.0" interaction-prompt="none" camera-orbit="45deg 75deg 105%"></model-viewer>
+        <model-viewer class="leaf l2" src="https://api.getlayers.ai/storage/v1/object/public/public/assets/soda-14ff8a788d/leaves.glb" environment-image="neutral" exposure="1.0" interaction-prompt="none" camera-orbit="-30deg 60deg 105%"></model-viewer>
+        <model-viewer class="leaf l3" src="https://api.getlayers.ai/storage/v1/object/public/public/assets/soda-14ff8a788d/leaves.glb" environment-image="neutral" exposure="1.0" interaction-prompt="none" camera-orbit="120deg 85deg 105%"></model-viewer>
+        <model-viewer class="leaf l4" src="https://api.getlayers.ai/storage/v1/object/public/public/assets/soda-14ff8a788d/leaves.glb" environment-image="neutral" exposure="1.0" interaction-prompt="none" camera-orbit="10deg 45deg 105%"></model-viewer>
+    </div>
+
+    <div class="hero-left">
+        <h1 class="main-title">
+            <span class="outline">Ribeye</span><br>
+            Royale
+        </h1>
+        <p class="description">
+            A carnivore's dream, freshly cut to order. <br>
+            Rich marbling and deep, beefy flavor — <br>
+            100% Zabiha Halal, from our block to your grill.
+        </p>
+        <div class="cta-group">
+            <a class="primary-btn" href="https://www.halalworlddepot.com/products/the-ribeye-royale-a-carnivores-dream-freshly-cut-to-order-save-75" target="_blank" rel="noopener">
+                Shop Now · Save 75%
+                <span class="plus-icon">+</span>
+            </a>
+        </div>
+        <div class="award-badge">
+            <div class="award-icon">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M12 3l2.5 5 5.5.8-4 3.9.9 5.5L12 15.6 7.1 18.2 8 12.7 4 8.8 9.5 8z" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>
+                </svg>
+            </div>
+            <div class="award-text">
+                <span class="award-title">100% ZABIHA HALAL</span>
+                <span class="award-subtitle">FRESHLY CUT TO ORDER</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Background garnish -->
+    <div class="berries-container-bg">
+        <div class="berry b7"></div>
+        <div class="berry b8"></div>
+        <div class="berry b9"></div>
+    </div>
+
+    <!-- Center product: the steak -->
+    <div class="hero-center">
+        <div class="steak-stage">
+            <div class="steak-3d" id="product-model" role="img" aria-label="The Ribeye Royale steak"></div>
+        </div>
+    </div>
+
+    <!-- Foreground garnish -->
+    <div class="berries-container">
+        <div class="berry b1"></div>
+        <div class="berry b2"></div>
+        <div class="berry b3"></div>
+        <div class="berry b4"></div>
+        <div class="berry b5"></div>
+        <div class="berry b6"></div>
+    </div>
+
+    <div class="hero-right">
+        <div class="product-carousel">
+            <div class="carousel-cards">
+                <div class="card active" data-flavor="classic">
+                    <span class="save-tag">-75%</span>
+                    <svg class="card-img" viewBox="0 0 400 300"><use href="#steak"/></svg>
+                    <div class="card-info">
+                        <span>Freshly Cut</span>
+                        <span>Cut to order</span>
+                    </div>
+                </div>
+                <div class="card" data-flavor="seared">
+                    <span class="save-tag">-75%</span>
+                    <svg class="card-img" viewBox="0 0 400 300" style="--grill:1; --crust:1; filter: drop-shadow(0 20px 35px rgba(0,0,0,.5)) brightness(0.85);"><use href="#steak"/></svg>
+                    <div class="card-info">
+                        <span>Grill Seared</span>
+                        <span>Ready for fire</span>
+                    </div>
+                </div>
+            </div>
+            <div class="carousel-nav">
+                <button class="nav-arrow" data-dir="-1" aria-label="Previous">←</button>
+                <button class="nav-arrow" data-dir="1" aria-label="Next">→</button>
+            </div>
+        </div>
+        <h2 class="side-title">
+            <span class="outline">Freshly</span><br>
+            Cut
+        </h2>
+    </div>
+  </div>
+</main>
+
+<div style="display: none;">
+    <!-- Preload herb model -->
+    <model-viewer src="https://api.getlayers.ai/storage/v1/object/public/public/assets/soda-14ff8a788d/leaves.glb"></model-viewer>
+</div>
+
+<script>
+// ---------- Build the extruded steak ----------
+const modelViewer = document.querySelector('#product-model');
+const THICKNESS = 14; // layers
+for (let i = 0; i < THICKNESS; i++) {
+    const s = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    s.setAttribute('viewBox', '0 0 400 300');
+    s.classList.add('steak-layer');
+    const isFace = i === THICKNESS - 1;
+    s.classList.add(isFace ? 'face' : 'side');
+    s.style.transform = `translateZ(${(i - THICKNESS / 2) * 2.2}px)`;
+    s.innerHTML = '<use href="#steak"/>';
+    modelViewer.appendChild(s);
+}
+// back face so the spin shows meat on both sides
+const back = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+back.setAttribute('viewBox', '0 0 400 300');
+back.classList.add('steak-layer');
+back.style.transform = `translateZ(${(-THICKNESS / 2 - 1) * 2.2}px) rotateY(180deg)`;
+back.innerHTML = '<use href="#steak"/>';
+modelViewer.appendChild(back);
+
+// ---------- Garnish sets ----------
+const GARNISH = {
+    classic: ['g-rosemary', 'g-pepper', 'g-salt', 'g-pepper', 'g-salt', 'g-rosemary', 'g-pepper', 'g-salt', 'g-pepper'],
+    seared:  ['g-chili', 'g-pepper', 'g-garlic', 'g-thyme', 'g-chili', 'g-garlic', 'g-pepper', 'g-thyme', 'g-pepper']
+};
+const allBerries = document.querySelectorAll('.berry');
+function setGarnish(set) {
+    document.querySelectorAll('.berry').forEach((b) => {
+        const idx = parseInt([...b.classList].find(c => /^b\d$/.test(c)).slice(1)) - 1;
+        b.innerHTML = `<svg viewBox="0 0 100 100"><use href="#${GARNISH[set][idx]}"/></svg>`;
+    });
+}
+setGarnish('classic');
+
+const berriesFG = document.querySelector('.berries-container');
+const berriesBG = document.querySelector('.berries-container-bg');
+const leavesBG = document.querySelector('.leaves-container');
+const cards = document.querySelectorAll('.card');
+let isSwitching = false;
+let switchSpin = 0;
+
+cards.forEach(card => {
+    card.addEventListener('click', () => {
+        if (isSwitching || card.classList.contains('active')) return;
+        cards.forEach(c => c.classList.remove('active'));
+        card.classList.add('active');
+        switchFlavor(card.dataset.flavor);
+    });
+});
+document.querySelectorAll('.nav-arrow').forEach(btn => {
+    btn.addEventListener('click', () => {
+        const list = [...cards];
+        const cur = list.findIndex(c => c.classList.contains('active'));
+        const next = (cur + parseInt(btn.dataset.dir) + list.length) % list.length;
+        list[next].click();
+    });
+});
+
+function switchFlavor(flavor) {
+    if (isSwitching) return;
+    isSwitching = true;
+    const body = document.body;
+    const berries = document.querySelectorAll('.berry');
+    const heroCenter = document.querySelector('.hero-center');
+
+    // 1. Background morph
+    const targetColors = flavor === 'seared'
+        ? { inner: '#8a4a12', mid: '#4a2408', outer: '#140a02' }
+        : { inner: '#8a1f12', mid: '#4a0e08', outer: '#140302' };
+    gsap.to(body, {
+        '--bg-inner': targetColors.inner,
+        '--bg-mid': targetColors.mid,
+        '--bg-outer': targetColors.outer,
+        duration: 1.5,
+        ease: 'power2.inOut'
+    });
+
+    // 2. Steak spin + motion blur, swap look at the peak
+    const spinObj = { val: 0, blur: 0 };
+    gsap.to(spinObj, {
+        val: 360, blur: 15, duration: 0.6, ease: 'power2.in',
+        onUpdate: () => {
+            switchSpin = spinObj.val;
+            modelViewer.style.filter = `blur(${spinObj.blur}px)`;
+        },
+        onComplete: () => {
+            if (flavor === 'seared') {
+                body.classList.add('seared-theme');
+                modelViewer.classList.add('seared');
+            } else {
+                body.classList.remove('seared-theme');
+                modelViewer.classList.remove('seared');
+            }
+            gsap.to(spinObj, {
+                val: 720, blur: 0, duration: 1.5, ease: 'back.out(0.7)',
+                onUpdate: () => {
+                    switchSpin = spinObj.val;
+                    modelViewer.style.filter = `blur(${spinObj.blur}px)`;
+                },
+                onComplete: () => {
+                    switchSpin = 0;
+                    modelViewer.style.filter = 'none';
+                }
+            });
+        }
+    });
+
+    // 3. Garnish implode → swap → explode
+    let completedBerries = 0;
+    berries.forEach((berry) => {
+        const bW = berry.offsetWidth / 2;
+        const bH = berry.offsetHeight / 2;
+        const centerX = (window.innerWidth / 2 - berry.offsetLeft - bW);
+        const centerY = (window.innerHeight / 2 - berry.offsetTop - bH);
+
+        const startAngle = parseFloat(berry.dataset.angle) || 0;
+        const currentBaseX = parseFloat(berry.dataset.baseX) || 0;
+        const currentBaseY = parseFloat(berry.dataset.baseY) || 0;
+        const nextBaseX = (Math.random() - 0.5) * 200;
+        const nextBaseY = (Math.random() - 0.5) * 200;
+
+        gsap.set(berry, { rotation: startAngle, x: currentBaseX, y: currentBaseY });
+
+        gsap.timeline()
+        .to(berry, {
+            x: centerX, y: centerY, rotation: startAngle + 45, scale: 0.1, opacity: 0,
+            duration: 0.5, ease: 'power2.in',
+            onComplete: () => {
+                const idx = parseInt([...berry.classList].find(c => /^b\d$/.test(c)).slice(1)) - 1;
+                berry.innerHTML = `<svg viewBox="0 0 100 100"><use href="#${GARNISH[flavor][idx]}"/></svg>`;
+                heroCenter.style.zIndex = 50;
+            }
+        })
+        .to(berry, { duration: 0.3 })
+        .to(berry, {
+            onStart: () => { heroCenter.style.zIndex = 1; },
+            x: nextBaseX, y: nextBaseY, rotation: startAngle + 90, scale: 1, opacity: '',
+            duration: 0.9, ease: 'back.out(1.5)',
+            onComplete: () => {
+                gsap.set(berry, { clearProps: 'opacity' });
+                berry.dataset.angle = startAngle + 90;
+                berry.dataset.baseX = nextBaseX;
+                berry.dataset.baseY = nextBaseY;
+                berry.dataset.rx = 0;
+                berry.dataset.ry = 0;
+                completedBerries++;
+                if (completedBerries === berries.length) isSwitching = false;
+            }
+        });
+    });
+}
+
+// ---------- Per-frame motion ----------
+allBerries.forEach(b => {
+    b.dataset.rx = 0; b.dataset.ry = 0; b.dataset.angle = Math.random() * 360;
+    b.dataset.baseX = 0; b.dataset.baseY = 0;
+});
+
+let mouse = { x: 0, y: 0, px: -9999, py: -9999 };
+let currentMouse = { x: 0, y: 0 };
+
+window.addEventListener('mousemove', (e) => {
+    mouse.x = (e.clientX / window.innerWidth) - 0.5;
+    mouse.y = (e.clientY / window.innerHeight) - 0.5;
+    mouse.px = e.clientX;
+    mouse.py = e.clientY;
+});
+
+const leaves = document.querySelectorAll('.leaf');
+
+function animate() {
+    const time = Date.now() * 0.001;
+    currentMouse.x += (mouse.x - currentMouse.x) * 0.05;
+    currentMouse.y += (mouse.y - currentMouse.y) * 0.05;
+
+    // Tilt the steak toward the cursor + switch spin
+    modelViewer.style.transform =
+        `rotateZ(-14deg) rotateY(${(currentMouse.x * 40) + switchSpin}deg) rotateX(${12 - currentMouse.y * 20}deg)`;
+
+    berriesFG.style.transform = `translate(${currentMouse.x * 60}px, ${currentMouse.y * 60}px)`;
+    berriesBG.style.transform = `translate(${currentMouse.x * -30}px, ${currentMouse.y * -30}px)`;
+    leavesBG.style.transform = `translate(${currentMouse.x * -15}px, ${currentMouse.y * -15}px)`;
+
+    if (!isSwitching) {
+        allBerries.forEach((berry, i) => {
+            const r = berry.getBoundingClientRect();
+            const diffX = mouse.px - (r.left + r.width / 2);
+            const diffY = mouse.py - (r.top + r.height / 2);
+            const distance = Math.sqrt(diffX * diffX + diffY * diffY);
+
+            let targetRx = 0, targetRy = 0, speedMult = 1;
+            if (distance < 400 && distance > 0) {
+                const force = (400 - distance) / 400;
+                targetRx = (diffX / distance) * force * -80;
+                targetRy = (diffY / distance) * force * -80;
+                speedMult = 1 + force * 5;
+            }
+
+            let rx = parseFloat(berry.dataset.rx) || 0;
+            let ry = parseFloat(berry.dataset.ry) || 0;
+            let angle = parseFloat(berry.dataset.angle) || 0;
+            const baseX = parseFloat(berry.dataset.baseX) || 0;
+            const baseY = parseFloat(berry.dataset.baseY) || 0;
+
+            rx += (targetRx - rx) * 0.1;
+            ry += (targetRy - ry) * 0.1;
+            angle += 0.2 * speedMult;
+
+            berry.dataset.rx = rx;
+            berry.dataset.ry = ry;
+            berry.dataset.angle = angle;
+
+            const dur = [5, 7, 6, 8, 5.5, 6.5, 9, 11, 10][i % 9];
+            const phase = (time + i * 0.7) * (Math.PI * 2 / dur);
+            const floatY = Math.sin(phase) * 15;
+            const floatAngle = Math.cos(phase) * 6;
+
+            berry.style.transform = `translate(${rx + baseX}px, ${ry + baseY + floatY}px) rotate(${angle + floatAngle}deg)`;
+        });
+    }
+
+    leaves.forEach((leaf, i) => {
+        const dur = 10 + i * 2;
+        const phase = (time + i * 1.2) * (Math.PI * 2 / dur);
+        const floatY = Math.sin(phase) * 20;
+        const floatX = Math.cos(phase * 0.5) * 15;
+        const floatAngle = Math.sin(phase * 0.3) * 15;
+        leaf.style.transform = `translate(${floatX}px, ${floatY}px) rotate(${floatAngle}deg)`;
+    });
+
+    requestAnimationFrame(animate);
+}
+animate();
+
+// ---------- Rising embers ----------
+const embersContainer = document.getElementById('embers-container');
+function createEmber() {
+    const ember = document.createElement('div');
+    ember.className = 'ember';
+    const size = Math.random() * 10 + 4;
+    ember.style.width = size + 'px';
+    ember.style.height = size + 'px';
+    ember.style.left = Math.random() * 100 + '%';
+    ember.style.bottom = '-50px';
+    ember.style.opacity = Math.random() * 0.4 + 0.2;
+    const duration = Math.random() * 6 + 4;
+    ember.style.animation = `floatUpImg ${duration}s linear forwards`;
+    embersContainer.appendChild(ember);
+    setTimeout(() => ember.remove(), duration * 1000);
+}
+setInterval(createEmber, 400);
+</script>
+</body>
+</html>
