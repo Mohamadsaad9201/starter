@@ -1,0 +1,24 @@
+{
+  "name": "agency-agents",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Standalone marketing agents (Paid Ads, SEO, Local SEO, AI Visibility) on a shared core.",
+  "scripts": {
+    "agent": "tsx src/cli.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^1.8.0",
+    "dotenv": "^18.0.10",
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.6",
+    "tsx": "^4.23.15",
+    "typescript": "^7.0.2"
+  }
+}

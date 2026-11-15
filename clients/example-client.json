@@ -1,0 +1,26 @@
+{
+  "slug": "example-client",
+  "name": "Acme Plumbing (sample)",
+  "industry": "Home services - plumbing",
+  "businessType": "local-service",
+  "currency": "USD",
+  "goals": {
+    "targetCpa": 75,
+    "monthlyAdBudget": 12000,
+    "primaryConversion": "Quote request form + calls"
+  },
+  "brandTerms": ["acme plumbing", "acme plumber"],
+  "competitors": ["rotorooter.com"],
+  "notes": "Busy season is Nov-Feb (frozen pipes). Owner cares about booked jobs, not form fills.",
+  "ads": {
+    "googleAds": { "customerId": "123-456-7890" },
+    "meta": { "adAccountId": "act_000000000000000" }
+  },
+  "sites": [
+    { "url": "https://www.acmeplumbing.example", "platform": "framer" }
+  ],
+  "locations": [
+    { "name": "Acme Plumbing - Austin", "address": "100 Example St, Austin, TX", "city": "Austin", "primaryCategory": "Plumber" }
+  ],
+  "guardrails": { "maxBudgetChangePct": 20, "allowLiveWrites": false }
+}
